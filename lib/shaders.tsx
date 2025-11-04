@@ -181,17 +181,15 @@ export function getPlanetMaterial(type: string) {
           uniforms={{
             time: { value: 0 },
             uLightDir: { value: new THREE.Vector3(0.2, 0.6, 0.5).normalize() },
-            uAmbient: { value: 0.25 },
+            uAmbient: { value: 0.3 },
             uSpecPower: { value: 48.0 },
-            uSpecStrength: { value: 0.3 },
-            uRim: { value: 0.45 },
-            uPulseSpeed: { value: 2.0 },
-            uNeuronColor: { value: new THREE.Color("#00ffbb") },
-            uSynapseColor: { value: new THREE.Color("#4411ff") },
-            uEnergyColor: { value: new THREE.Color("#ff00ff") },
-            uBgColor: { value: new THREE.Color("#000620") },
-            uNeuronDensity: { value: 15.0 },
-            uSynapseRange: { value: 0.3 },
+            uSpecStrength: { value: 0.4 },
+            uRim: { value: 0.5 },
+            uNodeDensity: { value: 8.0 },
+            uPulseSpeed: { value: 1.5 },
+            uPrimaryCol: { value: new THREE.Color("#00d9ff") },
+            uSecondaryCol: { value: new THREE.Color("#ff006e") },
+            uBgCol: { value: new THREE.Color("#0a0a1f") },
           }}
           vertexShader={
             /* glsl */ `
@@ -209,75 +207,110 @@ export function getPlanetMaterial(type: string) {
           }
           fragmentShader={
             /* glsl */ `
-            uniform float time, uPulseSpeed, uNeuronDensity, uSynapseRange;
+            uniform float time, uNodeDensity, uPulseSpeed;
             uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
-            uniform vec3 uLightDir, uNeuronColor, uSynapseColor, uEnergyColor, uBgColor;
+            uniform vec3 uLightDir, uPrimaryCol, uSecondaryCol, uBgCol;
             varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
-            vec2 neuronPos(vec2 id) {
-              return id + 0.5 + vec2(
-                0.4 * hash(vec3(id, time * 0.1)),
-                0.4 * hash(vec3(id + 1.3, time * 0.1))
-              );
+            float hash21(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
             }
 
-            float neuralField(vec2 p) {
-              float field = 0.0;
-              vec2 grid = floor(p * uNeuronDensity);
-              vec2 gPos = fract(p * uNeuronDensity) - 0.5;
+            vec2 hash22(vec2 p) {
+              p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+              return fract(sin(p) * 43758.5453);
+            }
+
+            float neuralNetwork(vec2 uv) {
+              float result = 0.0;
+              vec2 grid = floor(uv * uNodeDensity);
+              vec2 localUv = fract(uv * uNodeDensity);
               
+              // Check current and neighboring cells
               for(float y = -1.0; y <= 1.0; y++) {
                 for(float x = -1.0; x <= 1.0; x++) {
-                  vec2 offset = vec2(x, y);
-                  vec2 id = grid + offset;
-                  vec2 neuron = neuronPos(id);
-                  vec2 rel = offset + neuron - gPos;
+                  vec2 neighbor = grid + vec2(x, y);
+                  vec2 nodeOffset = hash22(neighbor);
                   
-                  // Neuron core
-                  float neuronCore = exp(-length(rel) * 8.0);
+                  // Animate node position slightly
+                  nodeOffset += 0.1 * sin(time * 0.5 + nodeOffset * 6.28);
                   
-                  // Synaptic connections
-                  float angle = hash(vec3(id, 2.3)) * 6.28;
-                  vec2 dir = vec2(cos(angle), sin(angle));
-                  float synapse = smoothstep(0.5, 0.0, abs(dot(normalize(rel), dir)));
-                  synapse *= exp(-length(rel) * 2.0) * step(length(rel), uSynapseRange);
+                  vec2 nodePos = vec2(x, y) + nodeOffset;
+                  vec2 toNode = nodePos - localUv;
+                  float distToNode = length(toNode);
                   
-                  // Energy pulse
-                  float pulse = sin(time * uPulseSpeed + hash(vec3(id, 0.0)) * 6.28);
-                  pulse = 0.5 + 0.5 * pulse;
+                  // Create pulsing nodes
+                  float pulse = 0.5 + 0.5 * sin(time * uPulseSpeed + hash21(neighbor) * 6.28);
+                  float node = smoothstep(0.15, 0.05, distToNode) * pulse;
+                  result += node * 2.0;
                   
-                  field += neuronCore * 1.5;
-                  field += synapse * pulse * 0.5;
+                  // Create connections between nearby nodes
+                  for(float ny = -1.0; ny <= 1.0; ny++) {
+                    for(float nx = -1.0; nx <= 1.0; nx++) {
+                      if(nx == 0.0 && ny == 0.0) continue;
+                      
+                      vec2 otherNeighbor = neighbor + vec2(nx, ny);
+                      vec2 otherOffset = hash22(otherNeighbor);
+                      otherOffset += 0.1 * sin(time * 0.5 + otherOffset * 6.28);
+                      vec2 otherPos = vec2(x + nx, y + ny) + otherOffset;
+                      
+                      // Draw line between nodes
+                      vec2 toOther = otherPos - nodePos;
+                      float lineLen = length(toOther);
+                      
+                      if(lineLen < 1.8) { // Only connect nearby nodes
+                        vec2 lineDir = normalize(toOther);
+                        vec2 toPoint = localUv - nodePos;
+                        float alongLine = dot(toPoint, lineDir);
+                        
+                        if(alongLine > 0.0 && alongLine < lineLen) {
+                          vec2 closestPoint = nodePos + lineDir * alongLine;
+                          float distToLine = length(localUv - closestPoint);
+                          
+                          // Animate signal traveling along connection
+                          float signal = fract(alongLine / lineLen - time * 0.8 + hash21(neighbor + otherNeighbor));
+                          signal = smoothstep(0.9, 1.0, signal);
+                          
+                          float connection = smoothstep(0.04, 0.0, distToLine) * 0.3;
+                          result += connection + signal * 0.8;
+                        }
+                      }
+                    }
+                  }
                 }
               }
-              return min(field, 1.0);
+              
+              return clamp(result, 0.0, 1.0);
             }
 
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
               
-              // Generate neural activity
-              float field = neuralField(vUv);
-              float energy = neuralField(vUv + vec2(time * 0.1));
+              // Generate neural network pattern
+              float network = neuralNetwork(vUv);
               
-              // Compose colors
-              vec3 neuralColor = mix(uBgColor, uNeuronColor, field);
-              vec3 synapticEnergy = uEnergyColor * energy * 0.5;
-              vec3 base = neuralColor + synapticEnergy;
+              // Add subtle noise texture
+              float noiseLayer = fbm(vPos * 4.0) * 0.15;
+              
+              // Mix colors based on activity
+              vec3 baseColor = mix(uBgCol, uPrimaryCol, network * 0.7);
+              baseColor = mix(baseColor, uSecondaryCol, network * network * 0.4);
+              baseColor += noiseLayer;
               
               // Apply lighting
-              LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, uRim, uAmbient);
-              vec3 final = lo.color + synapticEnergy * 0.5;
+              LightOut lo = shade(n, v, l, baseColor, uSpecPower, uSpecStrength, uRim, uAmbient);
               
-              gl_FragColor = vec4(final, 1.0);
+              // Add glow for active areas
+              vec3 glow = mix(uPrimaryCol, uSecondaryCol, network) * network * 0.6;
+              
+              gl_FragColor = vec4(lo.color + glow, 1.0);
             }
           `
           }
         />
       )
-
     case "software-systems":
       return (
         <shaderMaterial
