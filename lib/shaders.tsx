@@ -181,23 +181,22 @@ export function getPlanetMaterial(type: string) {
           uniforms={{
             time: { value: 0 },
             uLightDir: { value: new THREE.Vector3(0.2, 0.6, 0.5).normalize() },
-            uAmbient: { value: 0.22 },
+            uAmbient: { value: 0.25 },
             uSpecPower: { value: 48.0 },
-            uSpecStrength: { value: 0.25 },
+            uSpecStrength: { value: 0.3 },
             uRim: { value: 0.45 },
-            uGlow: { value: 1.15 },
-            uBg: { value: new THREE.Color("#0d1a2b") },
-            uNodeCol: { value: new THREE.Color("#7ae1ff") },
-            uLinkCol: { value: new THREE.Color("#2bb3ff") },
-            uNodeSize: { value: 0.0035 },
-            uLinkWidth: { value: 0.002 },
-            uCrossing: { value: 0.35 },
-            uLayersSpread: { value: 0.0084 },
+            uPulseSpeed: { value: 2.0 },
+            uNeuronColor: { value: new THREE.Color("#00ffbb") },
+            uSynapseColor: { value: new THREE.Color("#4411ff") },
+            uEnergyColor: { value: new THREE.Color("#ff00ff") },
+            uBgColor: { value: new THREE.Color("#000620") },
+            uNeuronDensity: { value: 15.0 },
+            uSynapseRange: { value: 0.3 },
           }}
           vertexShader={
             /* glsl */ `
             varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
-            void main(){
+            void main() {
               vUv = uv;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
@@ -210,82 +209,69 @@ export function getPlanetMaterial(type: string) {
           }
           fragmentShader={
             /* glsl */ `
-            uniform float time, uGlow, uNodeSize, uLinkWidth, uCrossing, uLayersSpread;
-            uniform vec3 uLightDir, uBg, uNodeCol, uLinkCol;
+            uniform float time, uPulseSpeed, uNeuronDensity, uSynapseRange;
             uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
+            uniform vec3 uLightDir, uNeuronColor, uSynapseColor, uEnergyColor, uBgColor;
             varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
-            const int LAYERS = 5;
-            const int NODES  = 8;
-            const int SAMPLES = 8;
-            float rnd(vec2 p){ return fract(sin(dot(p, vec2(41.31, 289.97)))*182437.54); }
-            vec2 nodePos(int i, int j){
-              float li = float(i), lj = float(j);
-              float x0 = 0.5 - 0.5*uLayersSpread;
-              float x1 = 0.5 + 0.5*uLayersSpread;
-              float x = mix(x0, x1, (li+0.5)/float(LAYERS));
-              float y = (lj+0.5)/float(NODES);
-              float jx = (rnd(vec2(li, lj))*2.0-1.0) * 0.012;
-              float jy = (rnd(vec2(li+3.7, lj))*2.0-1.0) * 0.012;
-              return vec2(x + jx, y + jy);
+
+            vec2 neuronPos(vec2 id) {
+              return id + 0.5 + vec2(
+                0.4 * hash(vec3(id, time * 0.1)),
+                0.4 * hash(vec3(id + 1.3, time * 0.1))
+              );
             }
-            float curveDist(vec2 p, vec2 a, vec2 b, vec2 c){
-              float d = 1e9;
-              for(int s=0; s<SAMPLES; s++){
-                float t = float(s)/float(SAMPLES-1);
-                vec2 q = mix(mix(a, b, t), mix(b, c, t), t);
-                d = min(d, length(p - q));
+
+            float neuralField(vec2 p) {
+              float field = 0.0;
+              vec2 grid = floor(p * uNeuronDensity);
+              vec2 gPos = fract(p * uNeuronDensity) - 0.5;
+              
+              for(float y = -1.0; y <= 1.0; y++) {
+                for(float x = -1.0; x <= 1.0; x++) {
+                  vec2 offset = vec2(x, y);
+                  vec2 id = grid + offset;
+                  vec2 neuron = neuronPos(id);
+                  vec2 rel = offset + neuron - gPos;
+                  
+                  // Neuron core
+                  float neuronCore = exp(-length(rel) * 8.0);
+                  
+                  // Synaptic connections
+                  float angle = hash(vec3(id, 2.3)) * 6.28;
+                  vec2 dir = vec2(cos(angle), sin(angle));
+                  float synapse = smoothstep(0.5, 0.0, abs(dot(normalize(rel), dir)));
+                  synapse *= exp(-length(rel) * 2.0) * step(length(rel), uSynapseRange);
+                  
+                  // Energy pulse
+                  float pulse = sin(time * uPulseSpeed + hash(vec3(id, 0.0)) * 6.28);
+                  pulse = 0.5 + 0.5 * pulse;
+                  
+                  field += neuronCore * 1.5;
+                  field += synapse * pulse * 0.5;
+                }
               }
-              return d;
+              return min(field, 1.0);
             }
-            float layerLinks(vec2 p, int i, int j){
-              float acc = 0.0;
-              vec2 a = nodePos(i, j);
-              for(int t=0; t<2; t++){
-                float pick = rnd(vec2(float(i)*13.0 + float(j)*7.0 + float(t)*3.0, 9.1));
-                int k = int(floor(pick * float(NODES)));
-                if (t == 0) { k = int(clamp(float(j) + floor(pick*3.0)-1.0, 0.0, float(NODES-1))); }
-                vec2 c = nodePos(i+1, k);
-                float signY = (rnd(vec2(float(i), float(j)+float(t))) > 0.5) ? 1.0 : -1.0;
-                float bow = uCrossing * (0.35 + 0.65*rnd(vec2(float(i)+5.0, float(k))));
-                float wob = 0.08 * sin(time*0.9 + float(j)*0.7 + float(t));
-                vec2 b = mix(a, c, 0.5) + vec2(0.0, signY * (bow + wob));
-                float d = curveDist(p, a, b, c);
-                float w = uLinkWidth * (0.85 + 0.15*sin(time*2.0 + float(j)*1.7));
-                float line = 1.0 - smoothstep(w, w*1.8, d);
-                float x0 = min(a.x, c.x);
-                float x1 = max(a.x, c.x);
-                float tflow = clamp((p.x - x0)/(x1 - x0 + 1e-4), 0.0, 1.0);
-                float pulse = 0.6 + 0.4*sin(tflow*18.0 - time*5.0 + float(j)*0.9);
-                acc += line * pulse;
-              }
-              return acc;
-            }
-            float nodeDisc(vec2 p, vec2 c, float r){
-              return 1.0 - smoothstep(r, r*1.6, length(p - c));
-            }
-            void main(){
+
+            void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              vec3 base = uBg * (0.92 + 0.08*fbm(vPos*0.8));
-              float links = 0.0;
-              for(int i=0; i<LAYERS-1; i++){
-                for(int j=0; j<NODES; j++){
-                  links += layerLinks(vUv, i, j);
-                }
-              }
-              links = clamp(links, 0.0, 2.0);
-              float nodes = 0.0;
-              for(int i=0; i<LAYERS; i++){
-                for(int j=0; j<NODES; j++){
-                  nodes += nodeDisc(vUv, nodePos(i,j), uNodeSize);
-                }
-              }
-              nodes = clamp(nodes, 0.0, 1.0);
-              vec3 emissive = uLinkCol * links + uNodeCol * nodes;
-              emissive *= uGlow;
+              
+              // Generate neural activity
+              float field = neuralField(vUv);
+              float energy = neuralField(vUv + vec2(time * 0.1));
+              
+              // Compose colors
+              vec3 neuralColor = mix(uBgColor, uNeuronColor, field);
+              vec3 synapticEnergy = uEnergyColor * energy * 0.5;
+              vec3 base = neuralColor + synapticEnergy;
+              
+              // Apply lighting
               LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, uRim, uAmbient);
-              gl_FragColor = vec4(lo.color + emissive, 1.0);
+              vec3 final = lo.color + synapticEnergy * 0.5;
+              
+              gl_FragColor = vec4(final, 1.0);
             }
           `
           }
