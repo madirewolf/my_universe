@@ -87,7 +87,7 @@ export const LANDMARKS: Record<number, Landmark[]> = {
         "Usability Engineering & Testing",
       ],
       color: "#00ff00",
-      link: "https://docs.google.com/document/d/1qU1FisJsHWVjX6X-rHRIVTboRY9d7AE3auTPdXp2DkI/edit?tab=t.0",
+      link: "https://youtu.be/e3XM7Xxnoa0?feature=shared",
     },
     {
       name: "DeLorean Route Optimizer",
@@ -107,7 +107,6 @@ export const LANDMARKS: Record<number, Landmark[]> = {
         "Software Architecture & Performance Tuning",
       ],
       color: "#00cc44",
-      link: "#",
     },
   ],
 

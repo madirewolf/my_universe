@@ -52,26 +52,6 @@ const LIGHTING_GLSL = /* glsl */ `
   }
 `
 
-const BASE_VERTEX_SHADER = /* glsl */`
-  varying vec2 vUv;
-  varying vec3 vN;
-  varying vec3 vPos;
-  varying vec3 vView;
-  varying mat4 vModelMatrix;
-  
-  void main() {
-    vUv = uv;
-    vN = normalize(normalMatrix * normal);
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vPos = worldPosition.xyz;
-    vModelMatrix = modelMatrix;
-    vec4 modelViewPosition = viewMatrix * worldPosition;
-    vView = normalize(-modelViewPosition.xyz);
-    gl_Position = projectionMatrix * modelViewPosition;
-  }
-`
-
-// Update each case to use the new vertex shader and modified fragment shaders
 export function getPlanetMaterial(type: string) {
   switch (type) {
     case "graphics":
@@ -88,7 +68,20 @@ export function getPlanetMaterial(type: string) {
             uBandFreq: { value: 4.0 },
             uFlakeScale: { value: 35.0 },
           }}
-          vertexShader={BASE_VERTEX_SHADER}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            void main(){
+              vUv = uv;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
           fragmentShader={
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uRim, uHueShift, uBandFreq, uFlakeScale;
@@ -132,7 +125,20 @@ export function getPlanetMaterial(type: string) {
             uColA: { value: new THREE.Color("#003300") },
             uColB: { value: new THREE.Color("#00ff66") },
           }}
-          vertexShader={BASE_VERTEX_SHADER}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            void main(){
+              vUv = uv;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
           fragmentShader={
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uRim, uGlow;
@@ -173,30 +179,38 @@ export function getPlanetMaterial(type: string) {
       return (
         <shaderMaterial
           uniforms={{
-            time: { value: 0 },
+            time: { value: 1000 },
             uLightDir: { value: new THREE.Vector3(0.2, 0.6, 0.5).normalize() },
-            uAmbient: { value: 0.3 },
+            uAmbient: { value: -0.5 },
             uSpecPower: { value: 48.0 },
             uSpecStrength: { value: 0.4 },
             uRim: { value: 0.5 },
-            uNodeDensity: { value: 8.0 },
-            uPulseSpeed: { value: 1.5 },
+            uNodeDensity: { value: 30.0 },
+            uPulseSpeed: { value: 10.5 },
             uPrimaryCol: { value: new THREE.Color("#00d9ff") },
             uSecondaryCol: { value: new THREE.Color("#ff006e") },
-            uBgCol: { value: new THREE.Color("#0a0a1f") },
+            uBgCol: { value: new THREE.Color("#000000ff") },
           }}
-          vertexShader={BASE_VERTEX_SHADER}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            void main() {
+              vUv = uv;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
           fragmentShader={
             /* glsl */ `
-            varying vec2 vUv;
-            varying vec3 vN;
-            varying vec3 vPos;
-            varying vec3 vView;
-            varying mat4 vModelMatrix;
-            
             uniform float time, uNodeDensity, uPulseSpeed;
             uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
             uniform vec3 uLightDir, uPrimaryCol, uSecondaryCol, uBgCol;
+            varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
@@ -316,7 +330,20 @@ export function getPlanetMaterial(type: string) {
             uDataCol: { value: new THREE.Color("#00ffcc") },
             uChipCol: { value: new THREE.Color("#2a2a2a") },
           }}
-          vertexShader={BASE_VERTEX_SHADER}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            void main(){
+              vUv = uv;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
           fragmentShader={
             /* glsl */ `
             uniform float time, uCircuitScale, uChipScale, uDataSpeed;

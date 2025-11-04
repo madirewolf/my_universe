@@ -63,15 +63,14 @@ export default function Planet({
         planetRef.current.rotation.x += 0.005
       }
 
-      // Sync material time with rotation
       const material = planetRef.current.material as any
       if (material.uniforms?.time) {
+        // Use accumulated rotation instead of clock time for perfect sync
         material.uniforms.time.value = rotationAccumulator.current
       }
 
-      // Sync landmarks with planet rotation
-      if (isDetailView && planetGroupRef.current) {
-        // Apply the same rotation to the parent group that contains both planet and landmarks
+      // Sync the parent group to the planet's rotation so landmarks stay glued to the surface
+      if (planetGroupRef.current) {
         planetGroupRef.current.rotation.y = planetRef.current.rotation.y
         if (!isDetailView) {
           planetGroupRef.current.rotation.x = planetRef.current.rotation.x
@@ -83,11 +82,9 @@ export default function Planet({
     if (isDetailView) {
       landmarkRefs.current.forEach((landmark, index) => {
         if (landmark) {
-          // Only handle hover scaling, remove individual rotations
+          // Remove individual landmark rotations — keep only hover scaling.
           landmark.scale.setScalar(
-            hoveredLandmark === index
-              ? 0.3 + Math.sin(state.clock.elapsedTime * 4) * 0.1
-              : 0.2
+            hoveredLandmark === index ? 0.3 + Math.sin(state.clock.elapsedTime * 4) * 0.1 : 0.2
           )
         }
       })
@@ -152,15 +149,16 @@ export default function Planet({
             setHoveredLandmark(null)
           }}
         >
-          <octahedronGeometry args={[1, 0]} />
+          {/* increased base size from 1 to 1.6 */}
+          <octahedronGeometry args={[1.4, 0]} />
           <meshStandardMaterial
             color={landmark.color}
             emissive={landmark.color}
-            emissiveIntensity={0.5}
+            emissiveIntensity={0.8}   // stronger glow
             transparent
-            opacity={0.9}
-            roughness={0.2}
-            metalness={0.8}
+            opacity={0.95}
+            roughness={0.05}          // much shinier surface
+            metalness={1.0}           // more metallic
           />
         </mesh>
       ))}

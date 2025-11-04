@@ -87,7 +87,7 @@ export default function UIOverlay({
             <div className="text-white">
               <h2 className="text-3xl font-bold">{PLANET_NAMES[selectedPlanet]}</h2>
               <p className="text-lg opacity-80">{PLANET_DESCRIPTIONS[selectedPlanet]}</p>
-              <p className="text-sm opacity-60">Click on landmarks to explore projects</p>
+              <p className="text-sm opacity-60">Click on the moon crystals to explore projects</p>
             </div>
             <button
               onClick={onBackToSystem}
