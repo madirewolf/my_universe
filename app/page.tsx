@@ -1,3 +1,6 @@
+
+'use client'
+
 import dynamic from "next/dynamic"
 
 const SolarPortfolio = dynamic(() => import("@/components/solar-portfolio"), { ssr: false })
