@@ -52,6 +52,26 @@ const LIGHTING_GLSL = /* glsl */ `
   }
 `
 
+const BASE_VERTEX_SHADER = /* glsl */`
+  varying vec2 vUv;
+  varying vec3 vN;
+  varying vec3 vPos;
+  varying vec3 vView;
+  varying mat4 vModelMatrix;
+  
+  void main() {
+    vUv = uv;
+    vN = normalize(normalMatrix * normal);
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vPos = worldPosition.xyz;
+    vModelMatrix = modelMatrix;
+    vec4 modelViewPosition = viewMatrix * worldPosition;
+    vView = normalize(-modelViewPosition.xyz);
+    gl_Position = projectionMatrix * modelViewPosition;
+  }
+`
+
+// Update each case to use the new vertex shader and modified fragment shaders
 export function getPlanetMaterial(type: string) {
   switch (type) {
     case "graphics":
@@ -68,20 +88,7 @@ export function getPlanetMaterial(type: string) {
             uBandFreq: { value: 4.0 },
             uFlakeScale: { value: 35.0 },
           }}
-          vertexShader={
-            /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
-            void main(){
-              vUv = uv;
-              vN = normalize(normalMatrix * normal);
-              vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
-              vec4 mv = viewMatrix * wp;
-              vView = normalize(-mv.xyz);
-              gl_Position = projectionMatrix * mv;
-            }
-          `
-          }
+          vertexShader={BASE_VERTEX_SHADER}
           fragmentShader={
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uRim, uHueShift, uBandFreq, uFlakeScale;
@@ -125,20 +132,7 @@ export function getPlanetMaterial(type: string) {
             uColA: { value: new THREE.Color("#003300") },
             uColB: { value: new THREE.Color("#00ff66") },
           }}
-          vertexShader={
-            /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
-            void main(){
-              vUv = uv;
-              vN = normalize(normalMatrix * normal);
-              vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
-              vec4 mv = viewMatrix * wp;
-              vView = normalize(-mv.xyz);
-              gl_Position = projectionMatrix * mv;
-            }
-          `
-          }
+          vertexShader={BASE_VERTEX_SHADER}
           fragmentShader={
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uRim, uGlow;
@@ -191,26 +185,18 @@ export function getPlanetMaterial(type: string) {
             uSecondaryCol: { value: new THREE.Color("#ff006e") },
             uBgCol: { value: new THREE.Color("#0a0a1f") },
           }}
-          vertexShader={
-            /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
-            void main() {
-              vUv = uv;
-              vN = normalize(normalMatrix * normal);
-              vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
-              vec4 mv = viewMatrix * wp;
-              vView = normalize(-mv.xyz);
-              gl_Position = projectionMatrix * mv;
-            }
-          `
-          }
+          vertexShader={BASE_VERTEX_SHADER}
           fragmentShader={
             /* glsl */ `
+            varying vec2 vUv;
+            varying vec3 vN;
+            varying vec3 vPos;
+            varying vec3 vView;
+            varying mat4 vModelMatrix;
+            
             uniform float time, uNodeDensity, uPulseSpeed;
             uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
             uniform vec3 uLightDir, uPrimaryCol, uSecondaryCol, uBgCol;
-            varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
@@ -317,64 +303,153 @@ export function getPlanetMaterial(type: string) {
           uniforms={{
             time: { value: 0 },
             uLightDir: { value: new THREE.Vector3(-0.2, 0.5, 0.3).normalize() },
-            uAmbient: { value: 0.22 },
-            uSpecPower: { value: 96.0 },
-            uSpecStrength: { value: 0.35 },
-            uRim: { value: 0.32 },
-            uTraceScale: { value: 14.0 },
-            uViaScale: { value: 6.0 },
-            uFlow: { value: 1.0 },
-            uMaskCol: { value: new THREE.Color("#0b2e21") },
-            uCopperCol: { value: new THREE.Color("#ffb45c") },
-            uFlowCol: { value: new THREE.Color("#ffe082") },
+            uAmbient: { value: 0.28 },
+            uSpecPower: { value: 120.0 },
+            uSpecStrength: { value: 0.5 },
+            uRim: { value: 0.4 },
+            uCircuitScale: { value: 12.0 },
+            uChipScale: { value: 4.0 },
+            uDataSpeed: { value: 2.0 },
+            uSubstrateCol: { value: new THREE.Color("#0a1a12") },
+            uSiliconCol: { value: new THREE.Color("#1a3a2a") },
+            uTraceCol: { value: new THREE.Color("#c9a060") },
+            uDataCol: { value: new THREE.Color("#00ffcc") },
+            uChipCol: { value: new THREE.Color("#2a2a2a") },
           }}
-          vertexShader={
-            /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
-            void main(){
-              vUv = uv;
-              vN = normalize(normalMatrix * normal);
-              vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
-              vec4 mv = viewMatrix * wp;
-              vView = normalize(-mv.xyz);
-              gl_Position = projectionMatrix * mv;
-            }
-          `
-          }
+          vertexShader={BASE_VERTEX_SHADER}
           fragmentShader={
             /* glsl */ `
-            uniform float time, uTraceScale, uViaScale, uFlow, uAmbient, uSpecPower, uSpecStrength, uRim;
-            uniform vec3 uLightDir, uMaskCol, uCopperCol, uFlowCol;
+            uniform float time, uCircuitScale, uChipScale, uDataSpeed;
+            uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
+            uniform vec3 uLightDir, uSubstrateCol, uSiliconCol, uTraceCol, uDataCol, uChipCol;
             varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
-            float traces(vec2 uv, float scale){
-              uv *= scale;
-              vec2 g = fract(uv) - 0.5;
-              vec2 d = abs(g);
-              float line = min(d.x, d.y);
-              float t = 1.0 - smoothstep(0.0, 0.06, line);
-              float breaks = step(0.55, fbm(vec3(floor(uv), 0.0)));
-              return t * breaks;
+
+            float hash21(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
             }
-            float vias(vec2 uv, float scale){
-              vec2 p = fract(uv*scale) - 0.5;
-              float r = length(p);
-              return 1.0 - smoothstep(0.18, 0.22, r);
+
+            // Create circuit traces (horizontal and vertical lines)
+            float circuitTraces(vec2 uv, float scale) {
+              vec2 scaled = uv * scale;
+              vec2 grid = floor(scaled);
+              vec2 local = fract(scaled);
+              
+              // Random pattern for trace direction
+              float pattern = hash21(grid);
+              
+              // Horizontal or vertical traces
+              float hTrace = step(0.45, local.y) * step(local.y, 0.55);
+              float vTrace = step(0.45, local.x) * step(local.x, 0.55);
+              
+              // Mix based on pattern
+              float trace = mix(hTrace, vTrace, step(0.5, pattern));
+              
+              // Add some gaps
+              float hasTrace = step(0.3, hash21(grid + 0.5));
+              
+              return trace * hasTrace;
             }
+
+            // Create chip/IC packages
+            float chipPackages(vec2 uv, float scale) {
+              vec2 scaled = uv * scale;
+              vec2 grid = floor(scaled);
+              vec2 local = fract(scaled) - 0.5;
+              
+              // Only place chips at certain grid positions
+              float hasChip = step(0.7, hash21(grid));
+              
+              // Rectangular chip shape
+              vec2 chipSize = vec2(0.35, 0.28);
+              vec2 d = abs(local) - chipSize;
+              float chip = step(max(d.x, d.y), 0.0);
+              
+              // Add pins on sides
+              float pinSpacing = 0.08;
+              float pinWidth = 0.02;
+              float pinY = abs(mod(local.y + pinSpacing * 0.5, pinSpacing) - pinSpacing * 0.5);
+              float pins = step(pinY, pinWidth) * step(chipSize.x, abs(local.x)) * step(abs(local.x), chipSize.x + 0.08);
+              
+              return (chip + pins) * hasChip;
+            }
+
+            // Create solder pads/vias
+            float solderPads(vec2 uv, float scale) {
+              vec2 scaled = uv * scale;
+              vec2 local = fract(scaled) - 0.5;
+              
+              float dist = length(local);
+              float pad = smoothstep(0.12, 0.08, dist);
+              
+              // Only some positions have pads
+              float hasPad = step(0.6, hash21(floor(scaled)));
+              
+              return pad * hasPad;
+            }
+
+            // Animated data packets flowing through traces
+            float dataFlow(vec2 uv, float scale, float speed) {
+              vec2 scaled = uv * scale;
+              vec2 grid = floor(scaled);
+              vec2 local = fract(scaled);
+              
+              float pattern = hash21(grid);
+              float offset = hash21(grid + 1.5) * 6.28;
+              
+              // Data moving along traces
+              float flow = fract(time * speed + offset);
+              
+              float hData = step(abs(local.y - flow), 0.08) * step(0.45, local.y) * step(local.y, 0.55);
+              float vData = step(abs(local.x - flow), 0.08) * step(0.45, local.x) * step(local.x, 0.55);
+              
+              float data = mix(hData, vData, step(0.5, pattern));
+              float hasTrace = step(0.3, hash21(grid + 0.5));
+              
+              return data * hasTrace;
+            }
+
             void main(){
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              vec3 base = uMaskCol * (0.9 + 0.1*fbm(vPos*1.2));
-              float tr = traces(vUv, uTraceScale);
-              float vi = vias(vUv, uViaScale);
-              float flow = sin(vUv.x*40.0 - time*4.0)*sin(vUv.y*36.0 - time*3.0);
-              flow = smoothstep(0.6, 1.0, flow) * tr * uFlow;
-              vec3 copper = uCopperCol * (0.8 + 0.2*fbm(vPos*3.0));
-              vec3 coat = mix(base, copper, clamp(tr*0.95 + vi, 0.0, 1.0));
-              vec3 emissive = uFlowCol * flow * 0.9;
-              LightOut lo = shade(n, v, l, coat, uSpecPower, uSpecStrength, uRim, uAmbient);
-              gl_FragColor = vec4(lo.color + emissive, 1.0);
+              
+              // Layer the circuit elements
+              float traces = circuitTraces(vUv, uCircuitScale);
+              float chips = chipPackages(vUv, uChipScale);
+              float pads = solderPads(vUv, uCircuitScale);
+              float data = dataFlow(vUv, uCircuitScale, uDataSpeed);
+              
+              // Base PCB substrate with texture
+              vec3 substrate = uSubstrateCol * (0.95 + 0.05 * fbm(vPos * 2.0));
+              
+              // Silicon substrate visible around traces
+              vec3 silicon = mix(substrate, uSiliconCol, step(0.01, traces + pads));
+              
+              // Copper/gold traces
+              vec3 traceColor = uTraceCol * (0.9 + 0.1 * fbm(vPos * 8.0));
+              vec3 withTraces = mix(silicon, traceColor, traces * 0.9);
+              
+              // Solder pads (shinier)
+              vec3 padColor = mix(uTraceCol, vec3(0.8), 0.3);
+              vec3 withPads = mix(withTraces, padColor, pads);
+              
+              // Chip packages (dark plastic)
+              vec3 chipColor = uChipCol * (0.95 + 0.05 * noise(vPos * 15.0));
+              vec3 withChips = mix(withPads, chipColor, chips);
+              
+              // Apply lighting
+              LightOut lo = shade(n, v, l, withChips, uSpecPower, uSpecStrength, uRim, uAmbient);
+              
+              // Add glowing data flowing through traces
+              vec3 dataGlow = uDataCol * data * 1.2;
+              
+              // Subtle chip activity glow
+              float chipActivity = chips * (0.5 + 0.5 * sin(time * 3.0 + hash21(floor(vUv * uChipScale)) * 6.28));
+              vec3 chipGlow = mix(vec3(0.0), uDataCol * 0.3, chipActivity);
+              
+              vec3 final = lo.color + dataGlow + chipGlow;
+              
+              gl_FragColor = vec4(final, 1.0);
             }
           `
           }

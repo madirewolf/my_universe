@@ -14,7 +14,6 @@ interface SunProps {
  * Notes
  * - Only use the single `state` arg in useFrame. Don’t destructure.
  * - No external libs, just three + @react-three/fiber.
- * - Inline shaders for v0 compatibility.
  */
 export default function Sun({ position }: SunProps) {
   const sunRef = useRef<Mesh>(null)

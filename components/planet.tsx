@@ -63,10 +63,19 @@ export default function Planet({
         planetRef.current.rotation.x += 0.005
       }
 
+      // Sync material time with rotation
       const material = planetRef.current.material as any
       if (material.uniforms?.time) {
-        // Use accumulated rotation instead of clock time for perfect sync
         material.uniforms.time.value = rotationAccumulator.current
+      }
+
+      // Sync landmarks with planet rotation
+      if (isDetailView && planetGroupRef.current) {
+        // Apply the same rotation to the parent group that contains both planet and landmarks
+        planetGroupRef.current.rotation.y = planetRef.current.rotation.y
+        if (!isDetailView) {
+          planetGroupRef.current.rotation.x = planetRef.current.rotation.x
+        }
       }
     }
 
@@ -74,9 +83,12 @@ export default function Planet({
     if (isDetailView) {
       landmarkRefs.current.forEach((landmark, index) => {
         if (landmark) {
-          landmark.rotation.y += 0.02
-          landmark.rotation.x += 0.01
-          landmark.scale.setScalar(hoveredLandmark === index ? 0.3 + Math.sin(state.clock.elapsedTime * 4) * 0.1 : 0.2)
+          // Only handle hover scaling, remove individual rotations
+          landmark.scale.setScalar(
+            hoveredLandmark === index
+              ? 0.3 + Math.sin(state.clock.elapsedTime * 4) * 0.1
+              : 0.2
+          )
         }
       })
     }
