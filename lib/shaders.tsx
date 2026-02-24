@@ -116,14 +116,11 @@ export function getPlanetMaterial(type: string) {
         <shaderMaterial
           uniforms={{
             time: { value: 0 },
-            uLightDir: { value: new THREE.Vector3(-0.3, 0.4, 0.7).normalize() },
-            uAmbient: { value: 0.2 },
-            uSpecPower: { value: 32.0 },
-            uSpecStrength: { value: 0.2 },
-            uRim: { value: 0.35 },
-            uGlow: { value: 1.3 },
-            uColA: { value: new THREE.Color("#003300") },
-            uColB: { value: new THREE.Color("#00ff66") },
+            uLightDir: { value: new THREE.Vector3(-0.3, 0.5, 0.8).normalize() },
+            uAmbient: { value: 0.15 },
+            uSpecPower: { value: 80.0 },
+            uSpecStrength: { value: 0.5 },
+            uVorScale: { value: 5.5 },
           }}
           vertexShader={
             /* glsl */ `
@@ -141,34 +138,83 @@ export function getPlanetMaterial(type: string) {
           }
           fragmentShader={
             /* glsl */ `
-            uniform float time, uAmbient, uSpecPower, uSpecStrength, uRim, uGlow;
-            uniform vec3 uLightDir, uColA, uColB;
+            uniform float time, uAmbient, uSpecPower, uSpecStrength, uVorScale;
+            uniform vec3 uLightDir;
             varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
-            float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453123); }
-            float columnMask(vec2 uv){
-              uv *= vec2(42.0, 28.0);
-              vec2 id = floor(uv);
-              vec2 f = fract(uv);
-              float colSel = step(0.5, rnd(id*0.73));
-              float head = fract(time*0.6 + rnd(id)*10.0);
-              float tapered = smoothstep(0.0, 0.12, abs(f.y-head));
-              float glyph = (1.0 - tapered) * colSel;
-              float gaps = step(0.15, rnd(id+3.7));
-              return glyph * gaps;
+
+            float h21(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
             }
-            void main(){
+            vec2 h22(vec2 p) {
+              p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+              return fract(sin(p) * 43758.5453);
+            }
+
+            vec3 voronoi(vec2 uv) {
+              vec2 id = floor(uv);
+              vec2 f  = fract(uv);
+              float d1 = 9999.0, d2 = 9999.0;
+              vec2 cid = id;
+              for (int y = -1; y <= 1; y++) {
+                for (int x = -1; x <= 1; x++) {
+                  vec2 g   = vec2(float(x), float(y));
+                  vec2 rnd = h22(id + g);
+                  vec2 pt  = g + 0.5 + 0.42 * sin(time * 0.18 + 6.28318 * rnd);
+                  float d  = length(f - pt);
+                  if (d < d1) { d2 = d1; d1 = d; cid = id + g; }
+                  else if (d < d2) { d2 = d; }
+                }
+              }
+              return vec3(d1, d2, h21(cid));
+            }
+
+            float isoline(float val, float freq, float w) {
+              float s = fract(val * freq);
+              return smoothstep(0.0, w, s) * (1.0 - smoothstep(w, w * 2.0, s));
+            }
+
+            void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              vec3 base = mix(uColA, uColB, 0.25);
-              float rain = columnMask(vUv);
-              float scan = 0.5 + 0.5*sin(vUv.y*3.14159*480.0);
-              float glow = rain * (0.8 + 0.2*scan);
-              float smear = fbm(vec3(vUv.x*30.0, vUv.y*200.0 - time*5.0, 0.0));
-              glow *= 0.7 + 0.3*smear;
-              vec3 emissive = mix(vec3(0.0), uColB, glow) * uGlow;
-              LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, uRim, uAmbient);
-              gl_FragColor = vec4(lo.color + emissive, 1.0);
+
+              // Voronoi cells
+              vec3 vor = voronoi(vUv * uVorScale);
+              float edge     = 1.0 - smoothstep(0.0, 0.055, vor.y - vor.x);
+              float edgeGlow = 1.0 - smoothstep(0.0, 0.15,  vor.y - vor.x);
+              float ch        = vor.z;
+              float cellPulse = step(0.45, ch) * (0.4 + 0.6 * sin(time * (0.2 + ch * 0.4) + ch * 6.28318));
+              float cellFill  = clamp((0.5 - vor.x) * 2.0, 0.0, 1.0) * cellPulse;
+
+              // FBM contour lines
+              float n1 = fbm(vec3(vUv * 3.0, time * 0.05));
+              float n2 = fbm(vec3(vUv * 2.0 + 0.4, time * 0.03));
+              float lines1   = isoline(n1, 10.0, 0.05);
+              float lines2   = isoline(n2,  7.0, 0.06);
+              float allLines = max(lines1 * 0.9, lines2 * 0.55);
+
+              // Base color
+              float surf = fbm(vPos * 2.5) * 0.03;
+              vec3 col = vec3(0.01, 0.028, 0.016) + surf;
+              col += vec3(0.0, 0.04, 0.022) * cellFill;
+              vec3 lineCol = mix(vec3(0.0, 0.55, 0.32), vec3(0.15, 0.95, 0.55), n1);
+              col = mix(col, lineCol, allLines * 0.88);
+              col = mix(col, vec3(0.12, 0.95, 0.55), edge * 0.75);
+
+              // Lighting
+              LightOut lo = shade(n, v, l, col, uSpecPower, uSpecStrength, 0.0, uAmbient);
+
+              // Emissive
+              vec3 em = vec3(0.0);
+              em += vec3(0.0,  0.65, 0.38) * allLines * 0.7;
+              em += vec3(0.08, 0.9,  0.52) * edgeGlow * 0.4;
+              em += vec3(0.2,  1.0,  0.65) * edge     * 0.55;
+              em += vec3(0.0,  0.28, 0.16) * cellFill * 0.4;
+              em += vec3(0.7,  1.0,  0.85) * allLines * edge * 2.0;
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 3.5);
+              em += vec3(0.0, 0.9, 0.5) * fres;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
             }
           `
           }
@@ -179,17 +225,13 @@ export function getPlanetMaterial(type: string) {
       return (
         <shaderMaterial
           uniforms={{
-            time: { value: 1000 },
-            uLightDir: { value: new THREE.Vector3(0.2, 0.6, 0.5).normalize() },
-            uAmbient: { value: -0.5 },
-            uSpecPower: { value: 48.0 },
-            uSpecStrength: { value: 0.4 },
-            uRim: { value: 0.5 },
-            uNodeDensity: { value: 30.0 },
-            uPulseSpeed: { value: 10.5 },
-            uPrimaryCol: { value: new THREE.Color("#00d9ff") },
-            uSecondaryCol: { value: new THREE.Color("#ff006e") },
-            uBgCol: { value: new THREE.Color("#000000ff") },
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 0.5, 0.8).normalize() },
+            uAmbient: { value: 0.18 },
+            uSpecPower: { value: 96.0 },
+            uSpecStrength: { value: 0.55 },
+            uHexScaleLarge: { value: 7.0 },
+            uHexScaleSmall: { value: 21.0 },
           }}
           vertexShader={
             /* glsl */ `
@@ -207,105 +249,93 @@ export function getPlanetMaterial(type: string) {
           }
           fragmentShader={
             /* glsl */ `
-            uniform float time, uNodeDensity, uPulseSpeed;
-            uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
-            uniform vec3 uLightDir, uPrimaryCol, uSecondaryCol, uBgCol;
+            uniform float time, uAmbient, uSpecPower, uSpecStrength;
+            uniform float uHexScaleLarge, uHexScaleSmall;
+            uniform vec3 uLightDir;
             varying vec2 vUv; varying vec3 vN, vPos, vView;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
-            float hash21(vec2 p) {
-              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            float h21(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
             }
 
-            vec2 hash22(vec2 p) {
-              p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-              return fract(sin(p) * 43758.5453);
+            float hexDist(vec2 p) {
+              p = abs(p);
+              return max(dot(p, normalize(vec2(1.0, 1.7320508))), p.x);
             }
 
-            float neuralNetwork(vec2 uv) {
-              float result = 0.0;
-              vec2 grid = floor(uv * uNodeDensity);
-              vec2 localUv = fract(uv * uNodeDensity);
-              
-              // Check current and neighboring cells
-              for(float y = -1.0; y <= 1.0; y++) {
-                for(float x = -1.0; x <= 1.0; x++) {
-                  vec2 neighbor = grid + vec2(x, y);
-                  vec2 nodeOffset = hash22(neighbor);
-                  
-                  // Animate node position slightly
-                  nodeOffset += 0.1 * sin(time * 0.5 + nodeOffset * 6.28);
-                  
-                  vec2 nodePos = vec2(x, y) + nodeOffset;
-                  vec2 toNode = nodePos - localUv;
-                  float distToNode = length(toNode);
-                  
-                  // Create pulsing nodes
-                  float pulse = 0.5 + 0.5 * sin(time * uPulseSpeed + hash21(neighbor) * 6.28);
-                  float node = smoothstep(0.15, 0.05, distToNode) * pulse;
-                  result += node * 2.0;
-                  
-                  // Create connections between nearby nodes
-                  for(float ny = -1.0; ny <= 1.0; ny++) {
-                    for(float nx = -1.0; nx <= 1.0; nx++) {
-                      if(nx == 0.0 && ny == 0.0) continue;
-                      
-                      vec2 otherNeighbor = neighbor + vec2(nx, ny);
-                      vec2 otherOffset = hash22(otherNeighbor);
-                      otherOffset += 0.1 * sin(time * 0.5 + otherOffset * 6.28);
-                      vec2 otherPos = vec2(x + nx, y + ny) + otherOffset;
-                      
-                      // Draw line between nodes
-                      vec2 toOther = otherPos - nodePos;
-                      float lineLen = length(toOther);
-                      
-                      if(lineLen < 1.8) { // Only connect nearby nodes
-                        vec2 lineDir = normalize(toOther);
-                        vec2 toPoint = localUv - nodePos;
-                        float alongLine = dot(toPoint, lineDir);
-                        
-                        if(alongLine > 0.0 && alongLine < lineLen) {
-                          vec2 closestPoint = nodePos + lineDir * alongLine;
-                          float distToLine = length(localUv - closestPoint);
-                          
-                          // Animate signal traveling along connection
-                          float signal = fract(alongLine / lineLen - time * 0.8 + hash21(neighbor + otherNeighbor));
-                          signal = smoothstep(0.9, 1.0, signal);
-                          
-                          float connection = smoothstep(0.04, 0.0, distToLine) * 0.3;
-                          result += connection + signal * 0.8;
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-              
-              return clamp(result, 0.0, 1.0);
+            // Returns x=edge, y=center dot, z=active fill, w=cellHash
+            vec4 hexLayer(vec2 uv, float scale, float edgeThick) {
+              uv *= scale;
+              vec2 r = vec2(1.0, 1.7320508);
+              vec2 h = r * 0.5;
+              vec2 a = mod(uv, r) - h;
+              vec2 b = mod(uv - h, r) - h;
+              vec2 gv = dot(a, a) < dot(b, b) ? a : b;
+              vec2 id = uv - gv;
+
+              float hd = hexDist(gv);
+              float edge = smoothstep(0.5, 0.5 - edgeThick, hd);
+              float center = smoothstep(0.08, 0.03, length(gv));
+
+              float ch = h21(id);
+              float isActive = step(0.55, ch);
+              float phase = h21(id + 0.73) * 6.28318;
+              float speed = 0.2 + h21(id + 1.1) * 0.35;
+              float activity = isActive * (0.5 + 0.5 * sin(time * speed + phase));
+              float fill = clamp(1.0 - hd * 2.0, 0.0, 1.0) * activity;
+
+              return vec4(edge, center, fill, ch);
             }
 
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              
-              // Generate neural network pattern
-              float network = neuralNetwork(vUv);
-              
-              // Add subtle noise texture
-              float noiseLayer = fbm(vPos * 4.0) * 0.15;
-              
-              // Mix colors based on activity
-              vec3 baseColor = mix(uBgCol, uPrimaryCol, network * 0.7);
-              baseColor = mix(baseColor, uSecondaryCol, network * network * 0.4);
-              baseColor += noiseLayer;
-              
-              // Apply lighting
-              LightOut lo = shade(n, v, l, baseColor, uSpecPower, uSpecStrength, uRim, uAmbient);
-              
-              // Add glow for active areas
-              vec3 glow = mix(uPrimaryCol, uSecondaryCol, network) * network * 0.6;
-              
-              gl_FragColor = vec4(lo.color + glow, 1.0);
+
+              // Dark navy base with micro surface texture
+              float surf = fbm(vPos * 3.0) * 0.035;
+              vec3 col = vec3(0.039, 0.078, 0.157) + surf;
+
+              // Two-scale hex lattice
+              vec4 hL = hexLayer(vUv, uHexScaleLarge, 0.04);
+              vec4 hS = hexLayer(vUv, uHexScaleSmall, 0.025);
+
+              // Pulsing active cell fills
+              col += vec3(0.01, 0.045, 0.12) * hL.z * 0.6;
+              col += vec3(0.005, 0.02, 0.06) * hS.z * 0.3;
+
+              // Hex grid lines
+              float edges = max(hL.x * 0.75, hS.x * 0.4);
+              col = mix(col, vec3(0.12, 0.38, 0.62), edges);
+
+              // Bright center nodes
+              float nodes = max(hL.y * 0.95, hS.y * 0.55);
+              col = mix(col, vec3(0.3, 0.72, 1.0), nodes);
+
+              // Scan ring sweeping along longitude
+              float scanPhase = fract(vUv.x - time * 0.06);
+              float scan = exp(-scanPhase * scanPhase * 4000.0) * 0.3;
+              col += vec3(0.0, 0.5, 1.0) * scan;
+
+              // Fine latitude micro-lines
+              float latGrid = 0.5 + 0.5 * sin(vUv.y * 251.0);
+              col += vec3(0.04, 0.16, 0.4) * smoothstep(0.97, 1.0, latGrid) * 0.1;
+
+              // Lighting
+              LightOut lo = shade(n, v, l, col, uSpecPower, uSpecStrength, 0.0, uAmbient);
+
+              // Emissive glow layers
+              vec3 em = vec3(0.0);
+              em += vec3(0.1, 0.42, 0.82) * edges * 0.45;
+              em += vec3(0.32, 0.72, 1.0) * nodes * 1.3;
+              em += vec3(0.01, 0.1, 0.32) * (hL.z + hS.z * 0.5) * 0.35;
+              em += vec3(0.0, 0.55, 1.0) * scan * 0.6;
+
+              // Fresnel rim — electric blue
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+              em += vec3(0.05, 0.22, 1.0) * fres * 1.0;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
             }
           `
           }

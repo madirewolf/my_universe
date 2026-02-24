@@ -25,10 +25,11 @@ function CameraController({
   const target = useRef(new THREE.Vector3(0, 25, 0))
 
   useFrame(() => {
-    target.current.set(0, selectedPlanet !== null ? 0 : 25, selectedPlanet !== null ? 12 : 0)
+    if (!isTransitioning) return
+    target.current.set(0, selectedPlanet !== null ? 0 : 42, selectedPlanet !== null ? 12 : 0)
     camera.position.lerp(target.current, 0.02)
     camera.lookAt(0, 0, 0)
-    if (isTransitioning && camera.position.distanceTo(target.current) < 0.5) {
+    if (camera.position.distanceTo(target.current) < 0.5) {
       setIsTransitioning(false)
     }
   })
@@ -38,14 +39,14 @@ function CameraController({
 
 export default function SolarPortfolio() {
   const [selectedPlanet, setSelectedPlanet] = useState<number | null>(null)
-  const [planetRotation, setPlanetRotation] = useState(0)
+  const [planetRotation, setPlanetRotation] = useState({ lon: 0, lat: 0 })
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null)
   const [selectedLandmark, setSelectedLandmark] = useState<any>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
 
   const handlePlanetClick = (idx: number) => {
     setSelectedPlanet(idx)
-    setPlanetRotation(0)
+    setPlanetRotation({ lon: 0, lat: 0 })
     setIsTransitioning(true)
   }
 
@@ -55,13 +56,18 @@ export default function SolarPortfolio() {
     setIsTransitioning(true)
   }
 
-  const rotatePlanet = (dir: "left" | "right") => setPlanetRotation((p) => p + (dir === "left" ? -0.3 : 0.3))
+  const STEP = Math.PI / 5
+  const rotatePlanet = (dir: "left" | "right" | "up" | "down") =>
+    setPlanetRotation((p) => ({
+      lon: p.lon + (dir === "left" ? -STEP : dir === "right" ? STEP : 0),
+      lat: p.lat + (dir === "up" ? STEP : dir === "down" ? -STEP : 0),
+    }))
 
   return (
     <div className="w-full h-screen relative overflow-hidden">
       <Background />
 
-      <Canvas camera={{ position: [0, 25, 0], fov: 60 }} gl={{ antialias: true }}>
+      <Canvas camera={{ position: [0, 42, 0], fov: 60 }} gl={{ antialias: true }} onPointerDown={() => isTransitioning && setIsTransitioning(false)}>
         <Suspense fallback={null}>
           <StarField />
           <Environment preset="night" />
@@ -80,23 +86,23 @@ export default function SolarPortfolio() {
               isDetailView
               size={4}
               type={["graphics", "algorithms", "ai-controls", "software-systems"][selectedPlanet]}
-              rotation={planetRotation}
+              lonOffset={planetRotation.lon}
+              latOffset={planetRotation.lat}
               planetIndex={selectedPlanet}
               onLandmarkClick={setSelectedLandmark}
             />
           )}
 
           <OrbitControls
-            enabled={!isTransitioning}
             enablePan={selectedPlanet === null}
             enableZoom
             enableRotate
-            minDistance={selectedPlanet === null ? 20 : 8}
-            maxDistance={selectedPlanet === null ? 60 : 20}
+            minDistance={selectedPlanet === null ? 30 : 8}
+            maxDistance={selectedPlanet === null ? 80 : 20}
             autoRotate={selectedPlanet === null && !isTransitioning}
             autoRotateSpeed={0.1}
             maxPolarAngle={selectedPlanet === null ? Math.PI / 2.2 : Math.PI}
-            minPolarAngle={selectedPlanet === null ? Math.PI / 3 : 0}
+            minPolarAngle={0}
           />
         </Suspense>
       </Canvas>

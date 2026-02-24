@@ -16,7 +16,8 @@ interface PlanetProps {
   onHover?: (hovered: boolean) => void
   // Detail mode props
   isDetailView?: boolean
-  rotation?: number
+  lonOffset?: number
+  latOffset?: number
   onLandmarkClick?: (landmark: Landmark) => void
   planetIndex?: number
 }
@@ -29,7 +30,8 @@ export default function Planet({
   onClick,
   onHover,
   isDetailView = false,
-  rotation = 0,
+  lonOffset = 0,
+  latOffset = 0,
   onLandmarkClick,
   planetIndex,
 }: PlanetProps) {
@@ -49,9 +51,9 @@ export default function Planet({
       orbitRef.current.rotation.y += speed
     }
 
-    // Manual rotation (only in detail mode)
+    // Manual rotation offsets (only in detail mode)
     if (isDetailView && planetGroupRef.current) {
-      planetGroupRef.current.rotation.z = rotation
+      planetGroupRef.current.rotation.x = latOffset
     }
 
     if (planetRef.current) {
@@ -71,7 +73,7 @@ export default function Planet({
 
       // Sync the parent group to the planet's rotation so landmarks stay glued to the surface
       if (planetGroupRef.current) {
-        planetGroupRef.current.rotation.y = planetRef.current.rotation.y
+        planetGroupRef.current.rotation.y = planetRef.current.rotation.y + lonOffset
         if (!isDetailView) {
           planetGroupRef.current.rotation.x = planetRef.current.rotation.x
         }
