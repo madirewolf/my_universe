@@ -53,6 +53,7 @@ export default function SolarPortfolio() {
   const handleBack = () => {
     setSelectedPlanet(null)
     setSelectedLandmark(null)
+    setHoveredPlanet(null)
     setIsTransitioning(true)
   }
 
