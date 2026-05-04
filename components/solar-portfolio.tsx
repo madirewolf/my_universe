@@ -8,18 +8,22 @@ import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type Universe } from "@/lib/c
 import SolarSystem from "./solar-system"
 import Planet from "./planet"
 import StarField from "./star-field"
+import StarNest from "./star-nest"
 import Background from "./background"
 import Nebula from "./nebula"
 import CosmicDust from "./cosmic-dust"
 import Rift from "./rift"
+import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
 
+type Mode = "system" | "planet" | "moon"
+
 function CameraController({
-  selectedPlanet,
+  mode,
   isTransitioning,
   setIsTransitioning,
 }: {
-  selectedPlanet: number | null
+  mode: Mode
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
 }) {
@@ -28,8 +32,14 @@ function CameraController({
 
   useFrame(() => {
     if (!isTransitioning) return
-    target.current.set(0, selectedPlanet !== null ? 0 : 52, selectedPlanet !== null ? 12 : 0)
-    camera.position.lerp(target.current, 0.02)
+    if (mode === "moon") {
+      target.current.set(0, 1.5, 9.5)
+    } else if (mode === "planet") {
+      target.current.set(0, 0, 12)
+    } else {
+      target.current.set(0, 52, 0)
+    }
+    camera.position.lerp(target.current, 0.04)
     camera.lookAt(0, 0, 0)
     if (camera.position.distanceTo(target.current) < 0.5) {
       setIsTransitioning(false)
@@ -51,9 +61,27 @@ export default function SolarPortfolio() {
   const planets = config.planets
   const selected = selectedPlanet !== null ? planets[selectedPlanet] : null
 
+  const mode: Mode = selectedLandmark ? "moon" : selectedPlanet !== null ? "planet" : "system"
+
+  // When in moon mode, derive the moon's index in its planet's landmark list so
+  // we hand the same seed to MoonView that the orbiting moon used.
+  const landmarkIndex =
+    selected && selectedLandmark ? selected.landmarks.indexOf(selectedLandmark) : -1
+  const landmarkSeed = landmarkIndex >= 0 ? landmarkIndex * 13.7 + 7 : 0
+
   const handlePlanetClick = (idx: number) => {
     setSelectedPlanet(idx)
     setPlanetRotation({ lon: 0, lat: 0 })
+    setIsTransitioning(true)
+  }
+
+  const handleLandmarkClick = (landmark: Landmark) => {
+    setSelectedLandmark(landmark)
+    setIsTransitioning(true)
+  }
+
+  const handleBackFromMoon = () => {
+    setSelectedLandmark(null)
     setIsTransitioning(true)
   }
 
@@ -65,7 +93,6 @@ export default function SolarPortfolio() {
   }
 
   const handleEnterRift = () => {
-    // Reset everything before swapping universes so we land in the system view
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setHoveredPlanet(null)
@@ -90,19 +117,24 @@ export default function SolarPortfolio() {
         onPointerDown={() => isTransitioning && setIsTransitioning(false)}
       >
         <Suspense fallback={null}>
+          <StarNest
+            brightness={0.0014}
+            saturation={config.backgroundVariant === "bright" ? 0.95 : 0.85}
+            tint={config.backgroundVariant === "bright" ? [1.1, 0.92, 1.05] : [0.9, 0.95, 1.1]}
+          />
           <StarField />
           <Nebula variant={config.backgroundVariant} />
           <CosmicDust variant={config.backgroundVariant} />
           <Environment preset="night" />
           <CameraController
-            selectedPlanet={selectedPlanet}
+            mode={mode}
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
           />
 
           <ambientLight intensity={LIGHTING.ambient} />
 
-          {selectedPlanet === null ? (
+          {mode === "system" && (
             <>
               <SolarSystem
                 planets={planets}
@@ -112,32 +144,36 @@ export default function SolarPortfolio() {
               />
               <Rift onClick={handleEnterRift} universe={universe} />
             </>
-          ) : (
-            selected && (
-              <Planet
-                isDetailView
-                size={4}
-                type={selected.type}
-                accentColor={selected.color}
-                bump={selected.bump}
-                seed={(selectedPlanet ?? 0) * 17.31}
-                landmarks={selected.landmarks}
-                lonOffset={planetRotation.lon}
-                latOffset={planetRotation.lat}
-                onLandmarkClick={setSelectedLandmark}
-              />
-            )
+          )}
+
+          {mode === "planet" && selected && (
+            <Planet
+              isDetailView
+              size={4}
+              type={selected.type}
+              accentColor={selected.color}
+              bump={selected.bump}
+              seed={(selectedPlanet ?? 0) * 17.31}
+              landmarks={selected.landmarks}
+              lonOffset={planetRotation.lon}
+              latOffset={planetRotation.lat}
+              onLandmarkClick={handleLandmarkClick}
+            />
+          )}
+
+          {mode === "moon" && selectedLandmark && (
+            <MoonView landmark={selectedLandmark} seed={landmarkSeed} />
           )}
 
           <OrbitControls
-            enablePan={selectedPlanet === null}
+            enablePan={mode === "system"}
             enableZoom
             enableRotate
-            minDistance={selectedPlanet === null ? 30 : 8}
-            maxDistance={selectedPlanet === null ? 90 : 20}
-            autoRotate={selectedPlanet === null && !isTransitioning}
+            minDistance={mode === "system" ? 30 : mode === "moon" ? 4 : 8}
+            maxDistance={mode === "system" ? 90 : mode === "moon" ? 16 : 20}
+            autoRotate={mode === "system" && !isTransitioning}
             autoRotateSpeed={0.1}
-            maxPolarAngle={selectedPlanet === null ? Math.PI / 2.2 : Math.PI}
+            maxPolarAngle={mode === "system" ? Math.PI / 2.2 : Math.PI}
             minPolarAngle={0}
           />
         </Suspense>
@@ -146,12 +182,13 @@ export default function SolarPortfolio() {
       <UIOverlay
         universe={universe}
         config={config}
+        mode={mode}
         selectedPlanet={selectedPlanet}
         hoveredPlanet={hoveredPlanet}
         selectedLandmark={selectedLandmark}
         onBackToSystem={handleBack}
+        onBackFromMoon={handleBackFromMoon}
         onRotatePlanet={rotatePlanet}
-        onCloseLandmark={() => setSelectedLandmark(null)}
         onEnterRift={handleEnterRift}
       />
     </div>

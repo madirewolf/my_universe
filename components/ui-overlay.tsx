@@ -5,17 +5,25 @@ import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, Instagram, Linkedin, S
 import type { Landmark, PlanetEntry, Universe, UniverseConfig } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
+type Mode = "system" | "planet" | "moon"
+
 interface UIOverlayProps {
   universe: Universe
   config: UniverseConfig
+  mode: Mode
   selectedPlanet: number | null
   hoveredPlanet: number | null
   selectedLandmark: Landmark | null
   onBackToSystem: () => void
+  onBackFromMoon: () => void
   onRotatePlanet: (direction: "left" | "right" | "up" | "down") => void
-  onCloseLandmark: () => void
   onEnterRift: () => void
 }
+
+// Tiny 1×1 SVG noise tile, encoded as a data URI. Used as an overlay texture
+// on glass panels — gives a subtle CRT-grain feel without bringing in an asset.
+const NOISE_DATA_URI =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>"
 
 const GLASS_TONES = {
   default: { bg: "rgba(4, 6, 20, 0.58)", blur: 18 },
@@ -57,7 +65,7 @@ function GlassPanel({
     : "0 0 0 1px rgba(90,130,255,0.1), 0 12px 40px rgba(0,0,0,0.45)"
   return (
     <div
-      className={cn("relative rounded-xl overflow-hidden", className)}
+      className={cn("glass-panel relative rounded-xl overflow-hidden", className)}
       style={{
         background: bg,
         backdropFilter: `blur(${blur}px)`,
@@ -66,7 +74,50 @@ function GlassPanel({
         boxShadow: shadow,
       }}
     >
-      {children}
+      {/* Scanlines — subtle CRT vibe, faded toward the panel edges */}
+      <div
+        aria-hidden
+        className="glass-scanlines pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(255,255,255,0.022) 2px, rgba(255,255,255,0.022) 3px)",
+          mixBlendMode: "overlay",
+        }}
+      />
+      {/* Grain — film-style noise speckle */}
+      <div
+        aria-hidden
+        className="glass-grain pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: `url("${NOISE_DATA_URI}")`,
+          backgroundSize: "160px 160px",
+          opacity: 0.06,
+          mixBlendMode: "overlay",
+        }}
+      />
+      {/* Shimmer — slow horizontal sweep that re-renders the panel as if it's
+          made of light, dissipating into space at the edges */}
+      <div
+        aria-hidden
+        className="glass-shimmer pointer-events-none absolute inset-0"
+        style={{
+          background: accentColor
+            ? `linear-gradient(115deg, transparent 35%, ${accentColor}18 50%, transparent 65%)`
+            : "linear-gradient(115deg, transparent 35%, rgba(120,170,255,0.10) 50%, transparent 65%)",
+          mixBlendMode: "screen",
+          backgroundSize: "200% 100%",
+        }}
+      />
+      {/* Soft edge dissipation — fades the corners so the panel reads as
+          emerging from the nebula rather than imposed on it */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-xl"
+        style={{
+          boxShadow: `inset 0 0 24px ${accentColor ?? "rgba(0,0,0"}${accentColor ? "00" : ",0.55)"}, inset 0 0 60px rgba(0,0,0,0.18)`,
+        }}
+      />
+      <div className="relative">{children}</div>
     </div>
   )
 }
@@ -321,12 +372,13 @@ function HoverTooltip({ planet }: { planet: PlanetEntry }) {
 export default function UIOverlay({
   universe,
   config,
+  mode,
   selectedPlanet,
   hoveredPlanet,
   selectedLandmark,
   onBackToSystem,
+  onBackFromMoon,
   onRotatePlanet,
-  onCloseLandmark,
   onEnterRift,
 }: UIOverlayProps) {
   const [glitchText, setGlitchText] = useState(config.glitchSubtitle)
@@ -374,7 +426,7 @@ export default function UIOverlay({
   return (
     <>
       {/* Title (system view) */}
-      {selectedPlanet === null && (
+      {mode === "system" && (
         <div className="absolute top-8 left-8 pointer-events-none">
           <GlassPanel>
             <div className="h-px w-full" style={{ background: accentGradient }} />
@@ -431,7 +483,7 @@ export default function UIOverlay({
       )}
 
       {/* Planet detail navigation */}
-      {selected && (
+      {mode === "planet" && selected && (
         <>
           <div className="absolute top-8 left-8 right-8 flex justify-between items-start pointer-events-auto">
             <GlassPanel>
@@ -504,10 +556,57 @@ export default function UIOverlay({
       )}
 
       {/* Hover tooltip */}
-      {hovered && selectedPlanet === null && <HoverTooltip planet={hovered} />}
+      {hovered && mode === "system" && <HoverTooltip planet={hovered} />}
 
-      {/* Landmark detail panel */}
-      {selectedLandmark && <LandmarkPanel landmark={selectedLandmark} onClose={onCloseLandmark} />}
+      {/* Moon mode: slim breadcrumb HUD + back-to-planet button.
+          The actual project info is rendered diegetically as floating
+          holograms around the data crystal in MoonView. */}
+      {mode === "moon" && selected && selectedLandmark && (
+        <>
+          <div className="absolute top-8 left-8 pointer-events-auto">
+            <GlassPanel accentColor={selectedLandmark.color}>
+              <div
+                className="h-px w-full"
+                style={{
+                  background: `linear-gradient(90deg, ${selectedLandmark.color}cc, ${selectedLandmark.color}33, transparent 70%)`,
+                }}
+              />
+              <div className="px-5 py-4">
+                <div
+                  className="text-[10px] font-semibold tracking-[0.22em] uppercase mb-1"
+                  style={{ color: `${selectedLandmark.color}cc` }}
+                >
+                  Now Inspecting
+                </div>
+                <div className="text-lg font-bold text-white tracking-tight leading-tight">
+                  {selectedLandmark.name}
+                </div>
+                <div
+                  className="text-[11px] mt-1"
+                  style={{ color: "rgba(255,255,255,0.45)" }}
+                >
+                  {selected.name}
+                </div>
+              </div>
+            </GlassPanel>
+          </div>
+
+          <button
+            onClick={onBackFromMoon}
+            className="absolute top-8 right-8 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-150
+              bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60
+              hover:border-[rgba(100,160,255,0.35)] hover:text-white/95 pointer-events-auto"
+            style={{ WebkitBackdropFilter: "blur(18px)" }}
+          >
+            <ArrowLeft size={15} />
+            Back to {selected.name.replace(/\s*Planet\s*$/i, "")}
+          </button>
+
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none text-white/45 text-xs tracking-wide">
+            Drag to orbit · scroll to zoom
+          </div>
+        </>
+      )}
 
       {/* Social links */}
       <div className="absolute bottom-8 right-8 flex gap-3 pointer-events-auto">
@@ -516,6 +615,18 @@ export default function UIOverlay({
       </div>
 
       <style jsx>{`
+        /* Glass-panel shimmer — slow horizontal sweep so panels feel alive */
+        :global(.glass-shimmer) {
+          animation: shimmerSweep 9s ease-in-out infinite;
+        }
+        @keyframes shimmerSweep {
+          0%   { background-position: -100% 0; opacity: 0.0; }
+          15%  { opacity: 0.85; }
+          50%  { background-position: 100% 0; opacity: 0.85; }
+          65%  { opacity: 0.0; }
+          100% { background-position: 200% 0; opacity: 0.0; }
+        }
+
         /* Hologram animations */
         @keyframes orbitSpin {
           from { transform: rotate(0deg); }

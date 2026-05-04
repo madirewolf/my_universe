@@ -148,8 +148,6 @@ export default function Planet({
   const landmarkRefs = useRef<Mesh[]>([])
   const [hoveredLandmark, setHoveredLandmark] = useState<number | null>(null)
 
-  const rotationAccumulator = useRef(0)
-
   const landmarks = landmarksProp ?? []
   const orbits = useMemo(() => landmarks.map((_, i) => moonOrbit(i)), [landmarks.length])
 
@@ -191,15 +189,17 @@ export default function Planet({
     if (planetRef.current) {
       const rotationSpeed = isDetailView ? 0.005 : 0.01
       planetRef.current.rotation.y += rotationSpeed
-      rotationAccumulator.current += rotationSpeed
 
       if (!isDetailView) {
         planetRef.current.rotation.x += 0.005
       }
 
+      // Drive shader animations from wall-clock seconds (matches the shadertoy
+      // timing that the shaders were authored against — radar sweep, voronoi
+      // pulse, hex scan all expected `time` to advance at ~1.0/sec).
       const material = planetRef.current.material as any
       if (material.uniforms?.time) {
-        material.uniforms.time.value = rotationAccumulator.current
+        material.uniforms.time.value = state.clock.elapsedTime
       }
 
       if (planetGroupRef.current) {
