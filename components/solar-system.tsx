@@ -4,27 +4,39 @@ import { useRef } from "react"
 import type { Group } from "three"
 import Planet from "./planet"
 import Sun from "./sun"
-import { PLANET_DATA } from "@/lib/constants"
+import type { PlanetEntry } from "@/lib/constants"
 
 interface SolarSystemProps {
+  planets: PlanetEntry[]
+  sunVariant: "warm" | "nebula"
   onPlanetClick: (planetIndex: number) => void
   onPlanetHover: (planetIndex: number | null) => void
 }
 
-export default function SolarSystem({ onPlanetClick, onPlanetHover }: SolarSystemProps) {
+export default function SolarSystem({
+  planets,
+  sunVariant,
+  onPlanetClick,
+  onPlanetHover,
+}: SolarSystemProps) {
   const systemRef = useRef<Group>(null)
 
   return (
     <group ref={systemRef}>
-      <Sun position={[0, 0, 0]} />
+      <Sun key={sunVariant} position={[0, 0, 0]} variant={sunVariant} />
 
-      {PLANET_DATA.map((planet, index) => (
+      {planets.map((planet, index) => (
         <Planet
-          key={index}
+          key={`${sunVariant}-${planet.type}-${index}`}
           distance={planet.distance}
           speed={planet.speed}
           size={planet.size}
           type={planet.type}
+          accentColor={planet.color}
+          phase={planet.phase}
+          tilt={planet.tilt}
+          bump={planet.bump}
+          seed={index * 17.31}
           onClick={() => onPlanetClick(index)}
           onHover={(hovered) => onPlanetHover(hovered ? index : null)}
         />

@@ -52,7 +52,11 @@ const LIGHTING_GLSL = /* glsl */ `
   }
 `
 
-export function getPlanetMaterial(type: string) {
+function hexToVec3(hex: string): THREE.Color {
+  return new THREE.Color(hex)
+}
+
+export function getPlanetMaterial(type: string, accentColor?: string) {
   switch (type) {
     case "graphics":
       return (
@@ -65,14 +69,15 @@ export function getPlanetMaterial(type: string) {
             uSpecStrength: { value: 0.35 },
             uRim: { value: 0.4 },
             uHueShift: { value: 0.9 },
-            uBandFreq: { value: 4.0 },
+            uBandFreq: { value: 2.0 },
             uFlakeScale: { value: 35.0 },
           }}
           vertexShader={
             /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView; varying vec3 vObj;
             void main(){
               vUv = uv;
+              vObj = normal;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
               vPos = wp.xyz;
@@ -86,7 +91,7 @@ export function getPlanetMaterial(type: string) {
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uRim, uHueShift, uBandFreq, uFlakeScale;
             uniform vec3 uLightDir;
-            varying vec2 vUv; varying vec3 vN, vPos, vView;
+            varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
             vec3 hsv2rgb(vec3 c){
@@ -95,13 +100,16 @@ export function getPlanetMaterial(type: string) {
             }
             void main(){
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vObj);
               float ndv = max(dot(n, v), 0.0);
               float film = pow(1.0 - ndv, 1.5);
               float hue = fract(film * 1.5 + 0.05 * sin(time*0.5));
               vec3 iri = hsv2rgb(vec3(hue, 0.9, 1.0));
-              float bands = 0.5 + 0.5*sin(vUv.y*3.14159*uBandFreq + time*0.8);
+              // Bands by latitude (continuous at poles)
+              float bands = 0.5 + 0.5*sin(sp.y*3.14159*uBandFreq + time*0.8);
               vec3 bandCol = mix(vec3(0.8,0.1,0.5), vec3(0.0,1.0,0.6), bands);
-              float flake = fbm(vPos * uFlakeScale);
+              // Flake noise anchored to the planet body
+              float flake = fbm(sp * uFlakeScale);
               vec3 base = mix(bandCol, iri, uHueShift) * (0.8 + 0.2*flake);
               LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, uRim, uAmbient);
               gl_FragColor = vec4(lo.color, 1.0);
@@ -120,13 +128,14 @@ export function getPlanetMaterial(type: string) {
             uAmbient: { value: 0.15 },
             uSpecPower: { value: 80.0 },
             uSpecStrength: { value: 0.5 },
-            uVorScale: { value: 5.5 },
+            uVorScale: { value: 2.6 },
           }}
           vertexShader={
             /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView; varying vec3 vObj;
             void main(){
               vUv = uv;
+              vObj = normal;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
               vPos = wp.xyz;
@@ -140,34 +149,41 @@ export function getPlanetMaterial(type: string) {
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uVorScale;
             uniform vec3 uLightDir;
-            varying vec2 vUv; varying vec3 vN, vPos, vView;
+            varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
-            float h21(vec2 p) {
-              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            float h31s(vec3 p) {
+              return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
             }
-            vec2 h22(vec2 p) {
-              p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+            vec3 h33(vec3 p) {
+              p = vec3(
+                dot(p, vec3(127.1, 311.7, 74.7)),
+                dot(p, vec3(269.5, 183.3, 246.1)),
+                dot(p, vec3(113.5, 271.9, 124.6))
+              );
               return fract(sin(p) * 43758.5453);
             }
 
-            vec3 voronoi(vec2 uv) {
-              vec2 id = floor(uv);
-              vec2 f  = fract(uv);
+            // 3D voronoi — wraps seamlessly because we sample in 3D space
+            vec3 voronoi3D(vec3 uvw) {
+              vec3 id = floor(uvw);
+              vec3 f  = fract(uvw);
               float d1 = 9999.0, d2 = 9999.0;
-              vec2 cid = id;
-              for (int y = -1; y <= 1; y++) {
-                for (int x = -1; x <= 1; x++) {
-                  vec2 g   = vec2(float(x), float(y));
-                  vec2 rnd = h22(id + g);
-                  vec2 pt  = g + 0.5 + 0.42 * sin(time * 0.18 + 6.28318 * rnd);
-                  float d  = length(f - pt);
-                  if (d < d1) { d2 = d1; d1 = d; cid = id + g; }
-                  else if (d < d2) { d2 = d; }
+              vec3 cid = id;
+              for (int z = -1; z <= 1; z++) {
+                for (int y = -1; y <= 1; y++) {
+                  for (int x = -1; x <= 1; x++) {
+                    vec3 g   = vec3(float(x), float(y), float(z));
+                    vec3 rnd = h33(id + g);
+                    vec3 pt  = g + 0.5 + 0.42 * sin(time * 0.18 + 6.28318 * rnd);
+                    float d  = length(f - pt);
+                    if (d < d1) { d2 = d1; d1 = d; cid = id + g; }
+                    else if (d < d2) { d2 = d; }
+                  }
                 }
               }
-              return vec3(d1, d2, h21(cid));
+              return vec3(d1, d2, h31s(cid));
             }
 
             float isoline(float val, float freq, float w) {
@@ -177,24 +193,25 @@ export function getPlanetMaterial(type: string) {
 
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vObj);  // anchored to the planet, no seam
 
-              // Voronoi cells
-              vec3 vor = voronoi(vUv * uVorScale);
+              // Voronoi cells (3D)
+              vec3 vor = voronoi3D(sp * uVorScale);
               float edge     = 1.0 - smoothstep(0.0, 0.055, vor.y - vor.x);
               float edgeGlow = 1.0 - smoothstep(0.0, 0.15,  vor.y - vor.x);
               float ch        = vor.z;
               float cellPulse = step(0.45, ch) * (0.4 + 0.6 * sin(time * (0.2 + ch * 0.4) + ch * 6.28318));
               float cellFill  = clamp((0.5 - vor.x) * 2.0, 0.0, 1.0) * cellPulse;
 
-              // FBM contour lines
-              float n1 = fbm(vec3(vUv * 3.0, time * 0.05));
-              float n2 = fbm(vec3(vUv * 2.0 + 0.4, time * 0.03));
+              // FBM contour lines (3D)
+              float n1 = fbm(sp * 3.0 + vec3(time * 0.05, 0.0, 0.0));
+              float n2 = fbm(sp * 2.0 + vec3(0.4, time * 0.03, 0.0));
               float lines1   = isoline(n1, 10.0, 0.05);
               float lines2   = isoline(n2,  7.0, 0.06);
               float allLines = max(lines1 * 0.9, lines2 * 0.55);
 
-              // Base color
-              float surf = fbm(vPos * 2.5) * 0.03;
+              // Base color (anchored micro-noise too)
+              float surf = fbm(sp * 12.0) * 0.03;
               vec3 col = vec3(0.01, 0.028, 0.016) + surf;
               col += vec3(0.0, 0.04, 0.022) * cellFill;
               vec3 lineCol = mix(vec3(0.0, 0.55, 0.32), vec3(0.15, 0.95, 0.55), n1);
@@ -230,14 +247,15 @@ export function getPlanetMaterial(type: string) {
             uAmbient: { value: 0.18 },
             uSpecPower: { value: 96.0 },
             uSpecStrength: { value: 0.55 },
-            uHexScaleLarge: { value: 7.0 },
-            uHexScaleSmall: { value: 21.0 },
+            uHexScaleLarge: { value: 4.0 },
+            uHexScaleSmall: { value: 12.0 },
           }}
           vertexShader={
             /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView; varying vec3 vObj;
             void main() {
               vUv = uv;
+              vObj = normal;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
               vPos = wp.xyz;
@@ -252,7 +270,7 @@ export function getPlanetMaterial(type: string) {
             uniform float time, uAmbient, uSpecPower, uSpecStrength;
             uniform float uHexScaleLarge, uHexScaleSmall;
             uniform vec3 uLightDir;
-            varying vec2 vUv; varying vec3 vN, vPos, vView;
+            varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
@@ -289,16 +307,29 @@ export function getPlanetMaterial(type: string) {
               return vec4(edge, center, fill, ch);
             }
 
+            // Triplanar wrapper — projects onto 3 planes and blends by which axis the normal favours.
+            // No UV seam, hex pattern is anchored to the planet body.
+            vec4 hexTriplanar(vec3 p, float scale, float edgeThick) {
+              vec3 absN = abs(p);
+              vec3 w = pow(absN, vec3(8.0));
+              w /= max(w.x + w.y + w.z, 1e-4);
+              vec4 hX = hexLayer(p.yz, scale, edgeThick);
+              vec4 hY = hexLayer(p.xz, scale, edgeThick);
+              vec4 hZ = hexLayer(p.xy, scale, edgeThick);
+              return hX * w.x + hY * w.y + hZ * w.z;
+            }
+
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vObj);  // anchored to planet body, no seam
 
-              // Dark navy base with micro surface texture
-              float surf = fbm(vPos * 3.0) * 0.035;
+              // Dark navy base with micro surface texture (also seam-free)
+              float surf = fbm(sp * 8.0) * 0.035;
               vec3 col = vec3(0.039, 0.078, 0.157) + surf;
 
-              // Two-scale hex lattice
-              vec4 hL = hexLayer(vUv, uHexScaleLarge, 0.04);
-              vec4 hS = hexLayer(vUv, uHexScaleSmall, 0.025);
+              // Two-scale hex lattice via triplanar projection
+              vec4 hL = hexTriplanar(sp, uHexScaleLarge, 0.04);
+              vec4 hS = hexTriplanar(sp, uHexScaleSmall, 0.025);
 
               // Pulsing active cell fills
               col += vec3(0.01, 0.045, 0.12) * hL.z * 0.6;
@@ -312,13 +343,14 @@ export function getPlanetMaterial(type: string) {
               float nodes = max(hL.y * 0.95, hS.y * 0.55);
               col = mix(col, vec3(0.3, 0.72, 1.0), nodes);
 
-              // Scan ring sweeping along longitude
-              float scanPhase = fract(vUv.x - time * 0.06);
+              // Scan ring sweeping around the planet's Y axis (anchored, seam-free)
+              float lon = atan(sp.z, sp.x);
+              float scanPhase = fract(lon * 0.15915494 - time * 0.06);
               float scan = exp(-scanPhase * scanPhase * 4000.0) * 0.3;
               col += vec3(0.0, 0.5, 1.0) * scan;
 
-              // Fine latitude micro-lines
-              float latGrid = 0.5 + 0.5 * sin(vUv.y * 251.0);
+              // Fine latitude micro-lines (lat = sp.y, [-1, 1])
+              float latGrid = 0.5 + 0.5 * sin(sp.y * 80.0);
               col += vec3(0.04, 0.16, 0.4) * smoothstep(0.97, 1.0, latGrid) * 0.1;
 
               // Lighting
@@ -507,6 +539,191 @@ export function getPlanetMaterial(type: string) {
               vec3 final = lo.color + dataGlow + chipGlow;
               
               gl_FragColor = vec4(final, 1.0);
+            }
+          `
+          }
+        />
+      )
+
+    case "autonomy":
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.3, 0.5, 0.8).normalize() },
+            uAmbient: { value: 0.22 },
+            uSpecPower: { value: 80.0 },
+            uSpecStrength: { value: 0.4 },
+            uGridScale: { value: 24.0 },
+            uSweepSpeed: { value: 0.32 },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            void main(){
+              vUv = uv;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient, uSpecPower, uSpecStrength, uGridScale, uSweepSpeed;
+            uniform vec3 uLightDir;
+            varying vec2 vUv; varying vec3 vN, vPos, vView;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+
+            float h21(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            }
+
+            float latLonGrid(vec2 uv, float scale, float thickness) {
+              vec2 g = abs(fract(uv * scale) - 0.5);
+              float line = min(g.x, g.y);
+              return smoothstep(thickness, 0.0, line);
+            }
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+
+              // Tactical relief — fbm "terrain" tint over a dark navy base
+              float relief = fbm(vPos * 1.6) * 0.4 + fbm(vPos * 5.0) * 0.06;
+              vec3 base = vec3(0.005, 0.025, 0.04) + vec3(0.0, 0.045, 0.07) * relief;
+
+              // Lat/lon grid (minor + major)
+              float gridMinor = latLonGrid(vUv, uGridScale, 0.012);
+              float gridMajor = latLonGrid(vUv, uGridScale * 0.25, 0.018);
+              base = mix(base, vec3(0.0, 0.32, 0.42), gridMinor * 0.18);
+              base = mix(base, vec3(0.0, 0.55, 0.7),  gridMajor * 0.35);
+
+              // Equator highlight
+              float eq = smoothstep(0.012, 0.0, abs(vUv.y - 0.5));
+              base += vec3(0.0, 0.18, 0.28) * eq;
+
+              // Sweeping radar arm in longitude direction
+              float sweepPhase = fract(vUv.x - time * uSweepSpeed);
+              float sweep      = exp(-sweepPhase * 60.0) * 1.2;
+              float sweepTail  = exp(-sweepPhase * 10.0) * 0.35;
+              vec3  sweepColor = vec3(0.0, 0.85, 1.0) * (sweep + sweepTail);
+
+              // Targets / blips — sparse random points that flash when sweep passes.
+              // Wrap cellId.x mod 14 so the longitude seam is invisible.
+              vec2 cellCoord  = vUv * 14.0;
+              vec2 cellId     = floor(cellCoord);
+              vec2 wrapId     = vec2(mod(cellId.x, 14.0), cellId.y);
+              float cellRand  = h21(wrapId);
+              float hasBlip   = step(0.88, cellRand);
+              vec2  cellLocal = fract(cellCoord) - 0.5;
+              vec2  blipOff   = (vec2(h21(wrapId + 1.3), h21(wrapId + 2.7)) - 0.5) * 0.6;
+              float blipDist  = length(cellLocal - blipOff);
+              float blipShape = smoothstep(0.06, 0.018, blipDist);
+
+              // Activation: blip pulses when the sweep arm is near its longitude
+              float blipLon   = (wrapId.x + 0.5 + blipOff.x) / 14.0;
+              float lonDelta  = fract(blipLon - (1.0 - fract(time * uSweepSpeed)));
+              float sweepHit  = exp(-pow(lonDelta * 18.0, 2.0));
+              float bgPulse   = 0.4 + 0.6 * sin(time * (1.0 + cellRand * 1.5) + cellRand * 6.28318);
+              float blip      = blipShape * hasBlip * (sweepHit + 0.18 * bgPulse);
+              vec3  blipColor = mix(vec3(0.6, 1.0, 1.0), vec3(0.0, 0.9, 1.0), 0.4) * blip;
+
+              // CRT-ish micro scanlines
+              float scanline = 0.5 + 0.5 * sin(vUv.y * 380.0);
+              base += vec3(0.0, 0.04, 0.06) * smoothstep(0.95, 1.0, scanline) * 0.25;
+
+              // Lighting
+              LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, 0.0, uAmbient);
+
+              // Emissive layers
+              vec3 em = vec3(0.0);
+              em += vec3(0.0, 0.42, 0.55) * gridMajor * 0.55;
+              em += vec3(0.0, 0.22, 0.32) * gridMinor * 0.30;
+              em += sweepColor * 0.85;
+              em += blipColor * 1.4;
+
+              // Fresnel rim (atmospheric haze)
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+              em += vec3(0.0, 0.55, 0.75) * fres * 0.9;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
+            }
+          `
+          }
+        />
+      )
+
+    case "personal":
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 0.6, 0.8).normalize() },
+            uAmbient: { value: 0.32 },
+            uSpecPower: { value: 28.0 },
+            uSpecStrength: { value: 0.18 },
+            uBaseColor: { value: hexToVec3(accentColor || "#a070ff") },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView; varying vec3 vObj;
+            void main() {
+              vUv = uv;
+              vObj = normal;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient, uSpecPower, uSpecStrength;
+            uniform vec3  uLightDir, uBaseColor;
+            varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vObj);  // anchored to planet body
+
+              // Two slow-flowing noise fields drive aurora-like bands of color
+              vec3 p1 = sp * 2.4 + vec3(time * 0.05, time * 0.02, 0.0);
+              vec3 p2 = sp * 4.6 + vec3(0.0, time * 0.03, time * 0.04);
+              float band1 = fbm(p1);
+              float band2 = fbm(p2);
+              float swirl = 0.5 + 0.5 * sin((band1 - band2) * 7.5 + time * 0.35);
+
+              // Palette: dark / mid / bright variations of uBaseColor
+              vec3 dark   = uBaseColor * 0.28;
+              vec3 mid    = uBaseColor * 0.85;
+              vec3 bright = mix(uBaseColor, vec3(1.0), 0.55);
+
+              vec3 base = mix(dark, mid, smoothstep(0.15, 0.75, band1));
+              base = mix(base, bright, smoothstep(0.45, 0.9, swirl) * 0.7);
+
+              // Soft cell-like texture overlay (anchored)
+              float micro = fbm(sp * 11.0);
+              base += uBaseColor * micro * 0.05;
+
+              // Lighting (low spec, high ambient — soft look)
+              LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, 0.0, uAmbient);
+
+              // Gentle rim glow + subtle twinkle specks (also anchored)
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.5);
+              vec3 em = uBaseColor * fres * 0.8;
+              float specks = pow(noise(sp * 90.0), 8.0);
+              em += vec3(1.0) * specks * 0.35;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
             }
           `
           }

@@ -6,8 +6,40 @@ import * as THREE from "three"
 import type { Mesh } from "three"
 import { LIGHTING } from "@/lib/constants"
 
+type SunVariant = "warm" | "nebula"
+
 interface SunProps {
   position: [number, number, number]
+  variant?: SunVariant
+}
+
+const SUN_VARIANTS: Record<SunVariant, {
+  colorA: string
+  colorB: string
+  glowColor: string
+  coronaColor: string
+  emissive: number
+  granScale: number
+  hotSpot: number
+}> = {
+  warm: {
+    colorA: "#FF6B00",
+    colorB: "#FFDFA0",
+    glowColor: "#FFB347",
+    coronaColor: "#FFD37A",
+    emissive: 1.9,
+    granScale: 0.7,
+    hotSpot: 0.9,
+  },
+  nebula: {
+    colorA: "#7030d0",
+    colorB: "#ff90d8",
+    glowColor: "#b890ff",
+    coronaColor: "#d090ff",
+    emissive: 1.7,
+    granScale: 0.5,
+    hotSpot: 0.55,
+  },
 }
 
 /**
@@ -15,10 +47,11 @@ interface SunProps {
  * - Only use the single `state` arg in useFrame. Don’t destructure.
  * - No external libs, just three + @react-three/fiber.
  */
-export default function Sun({ position }: SunProps) {
+export default function Sun({ position, variant = "warm" }: SunProps) {
   const sunRef = useRef<Mesh>(null)
   const coronaRef = useRef<Mesh>(null)
   const glowRef = useRef<Mesh>(null)
+  const v = SUN_VARIANTS[variant]
 
   // --- Shaders: tiny, self-contained noise + fresnel ---
 
@@ -200,11 +233,11 @@ export default function Sun({ position }: SunProps) {
           blending={THREE.NormalBlending}
           uniforms={{
             uTime: { value: 0 },
-            uColorA: { value: new THREE.Color("#FF6B00") }, // deep orange
-            uColorB: { value: new THREE.Color("#FFDFA0") }, // hot yellow/white
-            uEmissive: { value: 1.9 },
-            uGranScale: { value: 0.7 }, // tweak granulation size (lower = larger cells)
-            uHotSpot: { value: 0.9 },
+            uColorA: { value: new THREE.Color(v.colorA) },
+            uColorB: { value: new THREE.Color(v.colorB) },
+            uEmissive: { value: v.emissive },
+            uGranScale: { value: v.granScale },
+            uHotSpot: { value: v.hotSpot },
           }}
           vertexShader={sunVertex}
           fragmentShader={sunFragment}
@@ -215,7 +248,7 @@ export default function Sun({ position }: SunProps) {
       <mesh ref={glowRef}>
         <sphereGeometry args={[2.25, 48, 48]} />
         <meshBasicMaterial
-          color={"#FFB347"}
+          color={v.glowColor}
           transparent
           opacity={0.18}
           blending={THREE.AdditiveBlending}
@@ -233,7 +266,7 @@ export default function Sun({ position }: SunProps) {
           blending={THREE.AdditiveBlending}
           uniforms={{
             uTime: { value: 0 },
-            uCoronaCol: { value: new THREE.Color("#FFD37A") },
+            uCoronaCol: { value: new THREE.Color(v.coronaColor) },
             uIntensity: { value: 1.2 },
           }}
           vertexShader={coronaVertex}
