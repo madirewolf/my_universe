@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, Instagram, Linkedin, Sparkles } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, Instagram, Linkedin, Sparkles, Pause, Play } from "lucide-react"
 import type { Landmark, PlanetEntry, Universe, UniverseConfig } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import BackgroundMusic from "./background-music"
 
 type Mode = "system" | "planet" | "moon"
 
@@ -11,13 +12,15 @@ interface UIOverlayProps {
   universe: Universe
   config: UniverseConfig
   mode: Mode
+  paused: boolean
   selectedPlanet: number | null
   hoveredPlanet: number | null
   selectedLandmark: Landmark | null
   onBackToSystem: () => void
   onBackFromMoon: () => void
-  onRotatePlanet: (direction: "left" | "right" | "up" | "down") => void
+  onJoystick: (vel: { x: number; y: number }) => void
   onEnterRift: () => void
+  onTogglePause: () => void
 }
 
 // Tiny 1×1 SVG noise tile, encoded as a data URI. Used as an overlay texture
@@ -132,6 +135,184 @@ function NavBtn({ onClick, children }: { onClick: () => void; children: React.Re
     >
       {children}
     </button>
+  )
+}
+
+// ─── NavDial: drag-the-dot joystick on a compass ring ──────────────────────
+// Continuous rotation: drag distance = velocity, drag direction = axis.
+// Releasing the dot springs it back to center and stops rotation.
+
+function NavDial({
+  onJoystick,
+  accentColor,
+}: {
+  onJoystick: (vel: { x: number; y: number }) => void
+  accentColor: string
+}) {
+  const SIZE = 150
+  const HALF = SIZE / 2
+  const RING_R = 58
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+
+  const ticks = useMemo(() => {
+    return Array.from({ length: 24 }).map((_, i) => {
+      const ang = (i / 24) * Math.PI * 2 - Math.PI / 2
+      const isCardinal = i % 6 === 0
+      const isMid = i % 3 === 0
+      const inn = isCardinal ? 52 : isMid ? 56 : 58.5
+      const op = isCardinal ? 0.32 : isMid ? 0.18 : 0.1
+      return (
+        <line
+          key={i}
+          x1={HALF + Math.cos(ang) * inn}
+          y1={HALF + Math.sin(ang) * inn}
+          x2={HALF + Math.cos(ang) * 64}
+          y2={HALF + Math.sin(ang) * 64}
+          stroke={`rgba(255,255,255,${op})`}
+          strokeWidth={isCardinal ? 1.4 : 1}
+        />
+      )
+    })
+  }, [])
+
+  const updatePos = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const cx = rect.left + HALF
+    const cy = rect.top + HALF
+    let dx = clientX - cx
+    let dy = clientY - cy
+    const len = Math.hypot(dx, dy)
+    if (len > RING_R) {
+      dx = (dx / len) * RING_R
+      dy = (dy / len) * RING_R
+    }
+    setPos({ x: dx, y: dy })
+    onJoystick({ x: dx / RING_R, y: dy / RING_R })
+  }
+
+  // Spring back to center when released
+  useEffect(() => {
+    if (dragging) return
+    if (pos.x === 0 && pos.y === 0) return
+    let raf = 0
+    let cur = { x: pos.x, y: pos.y }
+    const step = () => {
+      cur = { x: cur.x * 0.65, y: cur.y * 0.65 }
+      if (Math.hypot(cur.x, cur.y) < 0.5) {
+        setPos({ x: 0, y: 0 })
+        onJoystick({ x: 0, y: 0 })
+        return
+      }
+      setPos({ x: cur.x, y: cur.y })
+      onJoystick({ x: cur.x / RING_R, y: cur.y / RING_R })
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging])
+
+  // Distance from center (0..1) — used to crank up the dot's glow as you push
+  const intensity = Math.min(1, Math.hypot(pos.x, pos.y) / RING_R)
+
+  return (
+    <div
+      ref={containerRef}
+      className="absolute top-1/2 -translate-y-1/2 right-12 pointer-events-auto"
+      style={{ width: SIZE, height: SIZE + 18, touchAction: "none", userSelect: "none" }}
+      onPointerDown={(e) => {
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+        setDragging(true)
+        updatePos(e.clientX, e.clientY)
+      }}
+      onPointerMove={(e) => {
+        if (!dragging) return
+        updatePos(e.clientX, e.clientY)
+      }}
+      onPointerUp={(e) => {
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+        setDragging(false)
+      }}
+      onPointerCancel={(e) => {
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+        setDragging(false)
+      }}
+    >
+      <svg
+        className="absolute inset-0 pointer-events-none"
+        width={SIZE}
+        height={SIZE}
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        aria-hidden
+      >
+        {/* Outer ring */}
+        <circle cx={HALF} cy={HALF} r={RING_R} fill="none" stroke={`${accentColor}30`} strokeWidth={1} />
+        {/* Inner faint ring */}
+        <circle
+          cx={HALF}
+          cy={HALF}
+          r={26}
+          fill="rgba(4,6,20,0.4)"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth={1}
+        />
+        {ticks}
+        {/* Faint trail line from center to dot — only while displaced */}
+        {(pos.x !== 0 || pos.y !== 0) && (
+          <line
+            x1={HALF}
+            y1={HALF}
+            x2={HALF + pos.x}
+            y2={HALF + pos.y}
+            stroke={`${accentColor}${Math.round(0x40 + intensity * 0x80)
+              .toString(16)
+              .padStart(2, "0")}`}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+          />
+        )}
+      </svg>
+
+      {/* The draggable dot */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          width: 30,
+          height: 30,
+          left: HALF,
+          top: HALF,
+          marginLeft: -15,
+          marginTop: -15,
+          transform: `translate(${pos.x}px, ${pos.y}px)`,
+          transition: dragging ? "none" : "transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        }}
+      >
+        <div
+          className="w-full h-full rounded-full"
+          style={{
+            background: `radial-gradient(circle, ${accentColor} 0%, ${accentColor}88 55%, ${accentColor}22 100%)`,
+            boxShadow: `0 0 ${10 + intensity * 22}px ${accentColor}${Math.round(
+              0x80 + intensity * 0x60,
+            )
+              .toString(16)
+              .padStart(2, "0")}, 0 0 0 1.5px ${accentColor}cc`,
+          }}
+        />
+      </div>
+
+      <div
+        className="absolute left-1/2 -translate-x-1/2 text-[8.5px] font-semibold tracking-[0.32em] uppercase pointer-events-none select-none whitespace-nowrap"
+        style={{
+          top: SIZE + 2,
+          color: `${accentColor}88`,
+        }}
+      >
+        Drag · rotate
+      </div>
+    </div>
   )
 }
 
@@ -373,13 +554,15 @@ export default function UIOverlay({
   universe,
   config,
   mode,
+  paused,
   selectedPlanet,
   hoveredPlanet,
   selectedLandmark,
   onBackToSystem,
   onBackFromMoon,
-  onRotatePlanet,
+  onJoystick,
   onEnterRift,
+  onTogglePause,
 }: UIOverlayProps) {
   const [glitchText, setGlitchText] = useState(config.glitchSubtitle)
 
@@ -520,38 +703,7 @@ export default function UIOverlay({
             Click on the orbiting moons to explore projects
           </div>
 
-          <div className="absolute top-1/2 -translate-y-1/2 right-16 pointer-events-auto">
-            <GlassPanel className="rounded-2xl flex flex-col items-center gap-1.5 px-5 py-4">
-              <div
-                className="absolute top-0 left-0 right-0 h-px"
-                style={{
-                  background:
-                    "linear-gradient(90deg, transparent, rgba(100,160,255,0.5), transparent)",
-                }}
-              />
-
-              <NavBtn onClick={() => onRotatePlanet("up")}>
-                <ArrowUp size={14} />
-              </NavBtn>
-              <div className="flex items-center gap-1.5">
-                <NavBtn onClick={() => onRotatePlanet("left")}>
-                  <ArrowLeft size={14} />
-                </NavBtn>
-                <div
-                  className="w-14 text-center text-[10px] font-semibold tracking-[0.2em] uppercase"
-                  style={{ color: "rgba(255,255,255,0.28)" }}
-                >
-                  explore
-                </div>
-                <NavBtn onClick={() => onRotatePlanet("right")}>
-                  <ArrowRight size={14} />
-                </NavBtn>
-              </div>
-              <NavBtn onClick={() => onRotatePlanet("down")}>
-                <ArrowDown size={14} />
-              </NavBtn>
-            </GlassPanel>
-          </div>
+          <NavDial onJoystick={onJoystick} accentColor={selected.color} />
         </>
       )}
 
@@ -612,6 +764,44 @@ export default function UIOverlay({
       <div className="absolute bottom-8 right-8 flex gap-3 pointer-events-auto">
         <SocialLink href="https://www.instagram.com/limiliminal/" icon={Instagram} />
         <SocialLink href="https://www.linkedin.com/in/mohammad-abu-daqer/" icon={Linkedin} />
+      </div>
+
+      {/* Pause / freeze toggle (also: spacebar, or click the sun) + music toggle */}
+      <div className="absolute bottom-8 left-8 flex items-center gap-3 pointer-events-auto">
+        <BackgroundMusic />
+        <button
+          onClick={onTogglePause}
+          aria-label={paused ? "Resume orbital motion" : "Freeze orbital motion"}
+          title={paused ? "Resume (space)" : "Freeze (space)"}
+          className="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-150
+            bg-[rgba(4,6,20,0.55)] backdrop-blur-[12px] border text-white/65
+            hover:text-white/95"
+          style={{
+            WebkitBackdropFilter: "blur(12px)",
+            borderColor: paused ? "rgba(255,200,80,0.5)" : "rgba(255,255,255,0.10)",
+            boxShadow: paused
+              ? "0 0 18px rgba(255,200,80,0.25), 0 0 0 1px rgba(255,200,80,0.25)"
+              : "none",
+          }}
+        >
+          {paused ? <Play size={16} /> : <Pause size={16} />}
+        </button>
+        {paused && (
+          <div
+            className="text-[10px] font-semibold tracking-[0.28em] uppercase select-none pointer-events-none"
+            style={{ color: "rgba(255,200,80,0.85)" }}
+          >
+            Stasis · Space to resume
+          </div>
+        )}
+        {!paused && (
+          <div
+            className="text-[10px] font-medium tracking-[0.18em] uppercase select-none pointer-events-none"
+            style={{ color: "rgba(255,255,255,0.32)" }}
+          >
+            Space · click sun to freeze
+          </div>
+        )}
       </div>
 
       <style jsx>{`

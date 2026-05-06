@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useFrame } from "@react-three/fiber"
+import { Html } from "@react-three/drei"
 import * as THREE from "three"
 import type { Group, Mesh } from "three"
 import { getPlanetMaterial } from "@/lib/shaders"
@@ -18,6 +19,7 @@ interface PlanetProps {
   tilt?: number
   bump?: number
   seed?: number
+  paused?: boolean
   onClick?: () => void
   onHover?: (hovered: boolean) => void
   // Detail mode props
@@ -133,6 +135,7 @@ export default function Planet({
   tilt = 0,
   bump = 0,
   seed = 0,
+  paused = false,
   onClick,
   onHover,
   isDetailView = false,
@@ -166,6 +169,16 @@ export default function Planet({
 
   useEffect(() => () => displacedGeom?.dispose(), [displacedGeom])
 
+  // Memoize the shaderMaterial JSX so its `uniforms` object reference stays
+  // stable across re-renders. Without this, r3f sees a new prop reference each
+  // render and replaces material.uniforms — which resets `time` to 0 and makes
+  // shader animations (radar sweep, voronoi pulse) appear frozen after the
+  // camera-transition completes.
+  const planetMaterialJsx = useMemo(
+    () => getPlanetMaterial(type, accentColor),
+    [type, accentColor],
+  )
+
   // Pre-build a unique crystal geometry per moon (only matters in detail view)
   const moonGeoms = useMemo(() => {
     if (!isDetailView) return [] as THREE.BufferGeometry[]
@@ -178,7 +191,9 @@ export default function Planet({
   )
 
   useFrame((state) => {
-    if (!isDetailView && orbitRef.current && speed) {
+    // Orbit revolution — gated by `paused` so the user can freeze the system
+    // and click any planet at leisure.
+    if (!isDetailView && orbitRef.current && speed && !paused) {
       orbitRef.current.rotation.y += speed
     }
 
@@ -187,16 +202,17 @@ export default function Planet({
     }
 
     if (planetRef.current) {
-      const rotationSpeed = isDetailView ? 0.005 : 0.01
-      planetRef.current.rotation.y += rotationSpeed
-
-      if (!isDetailView) {
-        planetRef.current.rotation.x += 0.005
+      if (!paused) {
+        const rotationSpeed = isDetailView ? 0.005 : 0.01
+        planetRef.current.rotation.y += rotationSpeed
+        if (!isDetailView) {
+          planetRef.current.rotation.x += 0.005
+        }
       }
 
-      // Drive shader animations from wall-clock seconds (matches the shadertoy
-      // timing that the shaders were authored against — radar sweep, voronoi
-      // pulse, hex scan all expected `time` to advance at ~1.0/sec).
+      // Shader time uniform stays driven by wall-clock even when paused — the
+      // *movement* of planets stops, but surface effects (radar sweep, voronoi
+      // pulse, hex scan) keep ticking so the world doesn't feel dead.
       const material = planetRef.current.material as any
       if (material.uniforms?.time) {
         material.uniforms.time.value = state.clock.elapsedTime
@@ -212,19 +228,23 @@ export default function Planet({
 
     if (isDetailView) {
       const t = state.clock.elapsedTime
-      orbits.forEach((o, i) => {
-        const g = moonOrbitRefs.current[i]
-        if (g) g.rotation.y = o.phase + t * o.speed
-      })
+      if (!paused) {
+        orbits.forEach((o, i) => {
+          const g = moonOrbitRefs.current[i]
+          if (g) g.rotation.y = o.phase + t * o.speed
+        })
+      }
 
       landmarkRefs.current.forEach((m, i) => {
         if (m) {
           m.scale.setScalar(
             hoveredLandmark === i ? 1.55 + Math.sin(t * 4) * 0.18 : 1.0,
           )
-          // Crystal moons spin on their own axes — every facet catches light differently
-          m.rotation.y = t * (0.4 + i * 0.07)
-          m.rotation.x = t * (0.25 + i * 0.05) + i * 0.5
+          if (!paused) {
+            // Crystal moons spin on their own axes — every facet catches light differently
+            m.rotation.y = t * (0.4 + i * 0.07)
+            m.rotation.x = t * (0.25 + i * 0.05) + i * 0.5
+          }
         }
       })
     }
@@ -253,7 +273,7 @@ export default function Planet({
       {...(displacedGeom ? { geometry: displacedGeom } : {})}
     >
       {isCube && <boxGeometry args={[size * 1.55, size * 1.55, size * 1.55]} />}
-      {getPlanetMaterial(type, accentColor)}
+      {planetMaterialJsx}
     </mesh>
   )
 
@@ -283,13 +303,15 @@ export default function Planet({
               }}
             >
               <group position={[o.radius, 0, 0]}>
-                {/* Faint halo so moon reads against deep-space backdrop */}
+                {/* Faint halo so each moon reads as a distinct point of light
+                    against the cosmic backdrop. */}
                 <mesh>
                   <sphereGeometry args={[0.55, 24, 24]} />
                   <meshBasicMaterial
                     color={landmark.color}
                     transparent
-                    opacity={0.1}
+                    opacity={0.18}
+                    blending={THREE.AdditiveBlending}
                     depthWrite={false}
                   />
                 </mesh>
@@ -318,7 +340,7 @@ export default function Planet({
                   <meshStandardMaterial
                     color={landmark.color}
                     emissive={landmark.color}
-                    emissiveIntensity={0.55}
+                    emissiveIntensity={0.6}
                     roughness={0.32}
                     metalness={0.78}
                     flatShading
@@ -336,6 +358,54 @@ export default function Planet({
                     depthWrite={false}
                   />
                 </mesh>
+
+                {/* Hover preview — a tiny floating card with the project name +
+                    category. Positioned just above the moon, screen-space so
+                    text stays readable at any camera distance. */}
+                {hoveredLandmark === index && (
+                  <Html
+                    position={[0, 0.7, 0]}
+                    center
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  >
+                    <div
+                      style={{
+                        whiteSpace: "nowrap",
+                        padding: "8px 12px",
+                        background: "rgba(4, 6, 20, 0.85)",
+                        backdropFilter: "blur(10px)",
+                        WebkitBackdropFilter: "blur(10px)",
+                        border: `1px solid ${landmark.color}55`,
+                        borderRadius: 8,
+                        boxShadow: `0 0 18px ${landmark.color}30, 0 6px 18px rgba(0,0,0,0.45)`,
+                        color: "white",
+                        fontFamily:
+                          "var(--font-geist-sans), system-ui, -apple-system, sans-serif",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          lineHeight: 1.15,
+                          marginBottom: 2,
+                        }}
+                      >
+                        {landmark.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: `${landmark.color}cc`,
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        {landmark.category}
+                      </div>
+                    </div>
+                  </Html>
+                )}
               </group>
             </group>
           </group>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef } from "react"
+import { useMemo, useRef } from "react"
 import { useFrame } from "@react-three/fiber"
 import * as THREE from "three"
 import type { Mesh } from "three"
@@ -11,6 +11,8 @@ type SunVariant = "warm" | "nebula"
 interface SunProps {
   position: [number, number, number]
   variant?: SunVariant
+  paused?: boolean
+  onClick?: () => void
 }
 
 const SUN_VARIANTS: Record<SunVariant, {
@@ -47,7 +49,7 @@ const SUN_VARIANTS: Record<SunVariant, {
  * - Only use the single `state` arg in useFrame. Don’t destructure.
  * - No external libs, just three + @react-three/fiber.
  */
-export default function Sun({ position, variant = "warm" }: SunProps) {
+export default function Sun({ position, variant = "warm", paused = false, onClick }: SunProps) {
   const sunRef = useRef<Mesh>(null)
   const coronaRef = useRef<Mesh>(null)
   const glowRef = useRef<Mesh>(null)
@@ -202,16 +204,79 @@ export default function Sun({ position, variant = "warm" }: SunProps) {
   // Materials/uniform refs
   const sunMatRef = useRef<THREE.ShaderMaterial>(null)
   const coronaMatRef = useRef<THREE.ShaderMaterial>(null)
+  const prominencesRef = useRef<THREE.Group>(null)
+  const chromosphereRef = useRef<THREE.Mesh>(null)
+  const raysRef = useRef<THREE.Group>(null)
+
+  // 6 prominence loops (arcing plasma) anchored at random points around the sun.
+  // Each is a half-torus oriented so it loops outward like a magnetic field line.
+  const prominences = useMemo(() => {
+    const N = 6
+    return Array.from({ length: N }).map((_, i) => {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / N)
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i + 0.42
+      const dir = new THREE.Vector3(
+        Math.cos(theta) * Math.sin(phi),
+        Math.cos(phi),
+        Math.sin(theta) * Math.sin(phi),
+      )
+      const radius = 0.55 + ((i * 1.7) % 1) * 0.45
+      const tube = 0.04 + ((i * 0.83) % 1) * 0.03
+      const phase = (i / N) * Math.PI * 2
+      return { dir, radius, tube, phase }
+    })
+  }, [])
+
+  // 14 thin radial ray streaks — solar wind made visible
+  const rays = useMemo(() => {
+    const N = 14
+    return Array.from({ length: N }).map((_, i) => {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / N)
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i + 1.13
+      const dir = new THREE.Vector3(
+        Math.cos(theta) * Math.sin(phi),
+        Math.cos(phi),
+        Math.sin(theta) * Math.sin(phi),
+      )
+      const len = 1.8 + ((i * 0.61) % 1) * 1.6
+      return { dir, len }
+    })
+  }, [])
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime()
     if (sunMatRef.current) sunMatRef.current.uniforms.uTime.value = t
     if (coronaMatRef.current) coronaMatRef.current.uniforms.uTime.value = t
 
-    // Subtle breathing glow by scaling the outer glow sphere
+    // Subtle breathing glow — slows to a heartbeat when paused so the user
+    // sees a clear "stasis" cue at the system's gravitational center.
     if (glowRef.current) {
-      const scale = 1 + Math.sin(t * 1.8) * 0.05
+      const breathe = paused ? 0.5 : 1.8
+      const amp = paused ? 0.10 : 0.05
+      const scale = 1 + Math.sin(t * breathe) * amp
       glowRef.current.scale.setScalar(scale)
+    }
+
+    // Chromosphere — thin glowing shell that flickers like real plasma
+    if (chromosphereRef.current) {
+      const flicker = 1 + Math.sin(t * 4.2) * 0.012 + Math.sin(t * 7.7) * 0.008
+      chromosphereRef.current.scale.setScalar(flicker)
+    }
+
+    // Prominences pulse independently (each on its own phase)
+    if (prominencesRef.current) {
+      prominencesRef.current.rotation.y = t * 0.04
+      prominencesRef.current.children.forEach((child, i) => {
+        const phase = prominences[i]?.phase ?? 0
+        const pulse = 0.85 + Math.sin(t * 1.1 + phase) * 0.18
+        child.scale.setScalar(pulse)
+      })
+    }
+
+    // Ray streaks rotate slowly — outward solar wind direction
+    if (raysRef.current) {
+      raysRef.current.rotation.y = -t * 0.06
+      raysRef.current.rotation.x = Math.sin(t * 0.05) * 0.12
     }
 
     // Make the corona face the camera (billboard)
@@ -222,8 +287,24 @@ export default function Sun({ position, variant = "warm" }: SunProps) {
 
   return (
     <group position={position}>
-      {/* Star body (pure emission via shader) */}
-      <mesh ref={sunRef}>
+      {/* Star body (pure emission via shader) — clickable to pause/unpause */}
+      <mesh
+        ref={sunRef}
+        onClick={(e) => {
+          if (!onClick) return
+          e.stopPropagation()
+          onClick()
+        }}
+        onPointerOver={(e) => {
+          if (!onClick) return
+          e.stopPropagation()
+          document.body.style.cursor = "pointer"
+        }}
+        onPointerOut={() => {
+          if (!onClick) return
+          document.body.style.cursor = "default"
+        }}
+      >
         <sphereGeometry args={[2.0, 64, 64]} />
         <shaderMaterial
           ref={sunMatRef}
@@ -244,6 +325,18 @@ export default function Sun({ position, variant = "warm" }: SunProps) {
         />
       </mesh>
 
+      {/* Chromosphere — thin glowing shell, flickers like ionized plasma */}
+      <mesh ref={chromosphereRef}>
+        <sphereGeometry args={[2.06, 48, 48]} />
+        <meshBasicMaterial
+          color={v.coronaColor}
+          transparent
+          opacity={0.22}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+
       {/* Subtle outer glow shell (cheap, transparent) */}
       <mesh ref={glowRef}>
         <sphereGeometry args={[2.25, 48, 48]} />
@@ -255,6 +348,69 @@ export default function Sun({ position, variant = "warm" }: SunProps) {
           depthWrite={false}
         />
       </mesh>
+
+      {/* Solar prominences — half-torus arcs of plasma looping out from
+          the surface, each pulsing on its own phase. */}
+      <group ref={prominencesRef}>
+        {prominences.map((p, i) => {
+          const quat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            p.dir,
+          )
+          const pos = p.dir.clone().multiplyScalar(2.0)
+          return (
+            <group key={i} position={pos.toArray()} quaternion={quat}>
+              {/* Half-torus: arc of 180°, looping outward */}
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[p.radius, p.tube, 10, 24, Math.PI]} />
+                <meshBasicMaterial
+                  color={v.coronaColor}
+                  transparent
+                  opacity={0.85}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+              {/* Inner glow — fatter, dimmer arc */}
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[p.radius, p.tube * 2.2, 10, 24, Math.PI]} />
+                <meshBasicMaterial
+                  color={v.coronaColor}
+                  transparent
+                  opacity={0.25}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          )
+        })}
+      </group>
+
+      {/* Solar wind ray streaks — thin radial planes additive blended */}
+      <group ref={raysRef}>
+        {rays.map((r, i) => {
+          const half = r.len / 2
+          const pos = r.dir.clone().multiplyScalar(2.05 + half)
+          const quat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            r.dir,
+          )
+          return (
+            <mesh key={i} position={pos.toArray()} quaternion={quat}>
+              <planeGeometry args={[0.18, r.len]} />
+              <meshBasicMaterial
+                color={v.glowColor}
+                transparent
+                opacity={0.32}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          )
+        })}
+      </group>
 
       {/* Camera-facing corona plane with turbulent edge */}
       <mesh ref={coronaRef} renderOrder={-1} position={[0, 0, 0]}>

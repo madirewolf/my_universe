@@ -2,7 +2,7 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
-import { Suspense, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import * as THREE from "three"
 import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type Universe } from "@/lib/constants"
 import SolarSystem from "./solar-system"
@@ -56,6 +56,46 @@ export default function SolarPortfolio() {
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null)
   const [selectedLandmark, setSelectedLandmark] = useState<Landmark | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [paused, setPaused] = useState(false)
+  // Joystick velocity from the navigation dial (-1..1 each axis). When non-zero
+  // a RAF loop integrates it into planetRotation for continuous rotation.
+  const joystickRef = useRef({ x: 0, y: 0 })
+
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05)
+      last = now
+      const { x, y } = joystickRef.current
+      if (x !== 0 || y !== 0) {
+        const speed = 1.6 // rad/sec at full deflection
+        setPlanetRotation((p) => ({
+          lon: p.lon + x * dt * speed,
+          lat: p.lat - y * dt * speed,
+        }))
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const setJoystick = (vel: { x: number; y: number }) => {
+    joystickRef.current = vel
+  }
+
+  // Spacebar = global pause toggle (so people can freeze the system to click moons easily)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !(e.target instanceof HTMLInputElement)) {
+        e.preventDefault()
+        setPaused((p) => !p)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
   const config = UNIVERSE_CONFIG[universe]
   const planets = config.planets
@@ -100,12 +140,7 @@ export default function SolarPortfolio() {
     setIsTransitioning(true)
   }
 
-  const STEP = Math.PI / 5
-  const rotatePlanet = (dir: "left" | "right" | "up" | "down") =>
-    setPlanetRotation((p) => ({
-      lon: p.lon + (dir === "left" ? -STEP : dir === "right" ? STEP : 0),
-      lat: p.lat + (dir === "up" ? STEP : dir === "down" ? -STEP : 0),
-    }))
+  // (Rotation now driven entirely by the NavDial joystick + the integrator above.)
 
   return (
     <div className="w-full h-screen relative overflow-hidden">
@@ -118,9 +153,11 @@ export default function SolarPortfolio() {
       >
         <Suspense fallback={null}>
           <StarNest
-            brightness={0.0014}
-            saturation={config.backgroundVariant === "bright" ? 0.95 : 0.85}
-            tint={config.backgroundVariant === "bright" ? [1.1, 0.92, 1.05] : [0.9, 0.95, 1.1]}
+            // Personal universe gets a quieter, more pastel pass so the fractal
+            // doesn't fight the bright pink/violet background.
+            brightness={config.backgroundVariant === "bright" ? 0.0009 : 0.0014}
+            saturation={config.backgroundVariant === "bright" ? 0.55 : 0.85}
+            tint={config.backgroundVariant === "bright" ? [1.05, 1.0, 1.05] : [0.9, 0.95, 1.1]}
           />
           <StarField />
           <Nebula variant={config.backgroundVariant} />
@@ -139,6 +176,8 @@ export default function SolarPortfolio() {
               <SolarSystem
                 planets={planets}
                 sunVariant={config.sunVariant}
+                paused={paused}
+                onSunClick={() => setPaused((p) => !p)}
                 onPlanetClick={handlePlanetClick}
                 onPlanetHover={setHoveredPlanet}
               />
@@ -157,6 +196,7 @@ export default function SolarPortfolio() {
               landmarks={selected.landmarks}
               lonOffset={planetRotation.lon}
               latOffset={planetRotation.lat}
+              paused={paused}
               onLandmarkClick={handleLandmarkClick}
             />
           )}
@@ -166,12 +206,15 @@ export default function SolarPortfolio() {
           )}
 
           <OrbitControls
-            enablePan={mode === "system"}
+            // Pan stays off so rotation is always anchored to the sun (system),
+            // the planet (planet detail), or the data crystal (moon).
+            enablePan={false}
+            target={[0, 0, 0]}
             enableZoom
             enableRotate
             minDistance={mode === "system" ? 30 : mode === "moon" ? 4 : 8}
             maxDistance={mode === "system" ? 90 : mode === "moon" ? 16 : 20}
-            autoRotate={mode === "system" && !isTransitioning}
+            autoRotate={mode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
             maxPolarAngle={mode === "system" ? Math.PI / 2.2 : Math.PI}
             minPolarAngle={0}
@@ -183,12 +226,14 @@ export default function SolarPortfolio() {
         universe={universe}
         config={config}
         mode={mode}
+        paused={paused}
+        onTogglePause={() => setPaused((p) => !p)}
         selectedPlanet={selectedPlanet}
         hoveredPlanet={hoveredPlanet}
         selectedLandmark={selectedLandmark}
         onBackToSystem={handleBack}
         onBackFromMoon={handleBackFromMoon}
-        onRotatePlanet={rotatePlanet}
+        onJoystick={setJoystick}
         onEnterRift={handleEnterRift}
       />
     </div>

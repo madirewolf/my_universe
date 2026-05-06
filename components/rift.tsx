@@ -11,7 +11,62 @@ interface RiftProps {
   universe: Universe
 }
 
-const VORTEX_VERT = /* glsl */ `
+// Vortex-style additive shader for the central energy core. Slowly drifts +
+// glitches its color separation so the rift "shudders" intermittently.
+const CORE_FRAG = /* glsl */ `
+  uniform float time;
+  uniform vec3 uColorA;
+  uniform vec3 uColorB;
+  uniform float uHovered;
+  varying vec2 vUv;
+
+  float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float n2(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x),
+      mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+  float fbm2(vec2 p) {
+    float a = 0.0, amp = 0.5;
+    for (int i = 0; i < 5; i++) {
+      a += amp * n2(p);
+      p *= 2.1;
+      amp *= 0.55;
+    }
+    return a;
+  }
+
+  void main() {
+    vec2 p = vUv * 2.0 - 1.0;
+    float r = length(p);
+    if (r > 1.0) discard;
+
+    float a = atan(p.y, p.x);
+    // Glitch: occasional fast offset
+    float glitchTrigger = step(0.93, sin(time * 0.7) * 0.5 + 0.5);
+    float glitchOff = glitchTrigger * (h21(vec2(floor(time * 18.0), 0.0)) - 0.5) * 0.4;
+
+    float swirl = a + r * 5.0 + time * 0.6 + glitchOff;
+    float n = fbm2(vec2(cos(swirl) * 1.4 + r * 2.5, sin(swirl) * 1.4 - r * 2.5 + time * 0.18));
+
+    float edge = smoothstep(1.0, 0.55, r);
+    float core = smoothstep(0.0, 0.55, r);
+
+    vec3 color = mix(uColorA, uColorB, n) * (0.45 + core * 1.05);
+    // Bright rim
+    float rim = smoothstep(0.85, 1.0, r) - smoothstep(1.0, 1.05, r);
+    color += uColorB * rim * 1.8;
+    color *= 1.0 + uHovered * 0.65;
+
+    gl_FragColor = vec4(color, edge);
+  }
+`
+
+const CORE_VERT = /* glsl */ `
   varying vec2 vUv;
   void main() {
     vUv = uv;
@@ -19,115 +74,115 @@ const VORTEX_VERT = /* glsl */ `
   }
 `
 
-const VORTEX_FRAG = /* glsl */ `
-  uniform float time;
-  uniform vec3  uColorA;
-  uniform vec3  uColorB;
-  uniform float uHovered;
-  varying vec2 vUv;
-
-  // Hash + 2D noise
-  float h21(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-  }
-  float n2(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f*f*(3.0 - 2.0*f);
-    float a = h21(i);
-    float b = h21(i + vec2(1,0));
-    float c = h21(i + vec2(0,1));
-    float d = h21(i + vec2(1,1));
-    return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
-  }
-  float fbm2(vec2 p) {
-    float a = 0.0, amp = 0.5;
-    for (int i = 0; i < 5; i++) {
-      a += amp * n2(p);
-      p *= 2.1;
-      amp *= 0.5;
-    }
-    return a;
-  }
-
-  void main() {
-    // Centered, polar coords
-    vec2 p = vUv * 2.0 - 1.0;
-    float r = length(p);
-    float a = atan(p.y, p.x);
-
-    // Discard outside the disc
-    if (r > 1.0) discard;
-
-    // Swirling vortex sampled in (radius, angle) — angle drifts inward over time
-    float swirl = a + r * 4.5 + time * 0.4;
-    float n = fbm2(vec2(cos(swirl) * 1.6 + r * 2.0, sin(swirl) * 1.6 - r * 2.0 + time * 0.18));
-
-    // Falloff toward the edge so the disc fades in
-    float edge = smoothstep(1.0, 0.6, r);
-    float core = smoothstep(0.0, 0.7, r);  // darker / more interesting away from center
-
-    vec3 color = mix(uColorA, uColorB, n) * (0.4 + core * 0.9);
-
-    // Bright halo right at the rim
-    float rim = smoothstep(0.85, 1.0, r) - smoothstep(1.0, 1.05, r);
-    color += uColorB * rim * 1.6;
-
-    // Hover boost
-    color *= 1.0 + uHovered * 0.55;
-
-    float alpha = edge;
-    gl_FragColor = vec4(color, alpha);
-  }
-`
+interface ShardSpec {
+  dir: THREE.Vector3
+  length: number
+  hue: number
+}
 
 export default function Rift({ onClick, universe }: RiftProps) {
   const groupRef = useRef<Group>(null)
-  const ringRef = useRef<Mesh>(null)
-  const innerRingRef = useRef<Mesh>(null)
-  const matRef = useRef<THREE.ShaderMaterial>(null)
+  const coreInnerRef = useRef<Mesh>(null)
+  const haloRef = useRef<Mesh>(null)
+  const shardsGroupRef = useRef<Group>(null)
+  const beamsGroupRef = useRef<Group>(null)
+  const sliceMatRef = useRef<THREE.ShaderMaterial>(null)
   const [hovered, setHovered] = useState(false)
 
-  // Position the rift far out, opposite the camera's default view, slightly elevated
-  const position: [number, number, number] = [0, 6, -36]
+  // Position FAR off and elevated — bigger but distant so it reads as a
+  // rip in space rather than something hovering nearby.
+  const position: [number, number, number] = [0, 16, -75]
 
-  // Color palette flips based on current universe — the rift pulses with the
-  // *opposite* universe's accent so it reads as "the other side."
   const colors = useMemo(() => {
     if (universe === "professional") {
-      // Personal-side colors leaking through: pink + violet
       return {
         a: new THREE.Color("#a050ff"),
         b: new THREE.Color("#ff80d0"),
-        ring: "#d090ff",
+        beam: "#e090ff",
+        shard: "#d090ff",
+        emissive: "#ffa0e8",
       }
     }
-    // Professional-side colors leaking through: cyan + electric blue
     return {
-      a: new THREE.Color("#3060ff"),
+      a: new THREE.Color("#3070ff"),
       b: new THREE.Color("#00e0ff"),
-      ring: "#80d0ff",
+      beam: "#90e0ff",
+      shard: "#80c8ff",
+      emissive: "#a0e8ff",
     }
   }, [universe])
 
-  useFrame((s) => {
-    const t = s.clock.elapsedTime
-    if (matRef.current) {
-      matRef.current.uniforms.time.value = t
-      matRef.current.uniforms.uHovered.value = hovered ? 1 : 0
+  // Fibonacci-sphere distribution of crystal shards radiating outward
+  const shards = useMemo<ShardSpec[]>(() => {
+    const N = 14
+    return Array.from({ length: N }).map((_, i) => {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / N)
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i
+      const dir = new THREE.Vector3(
+        Math.cos(theta) * Math.sin(phi),
+        Math.cos(phi),
+        Math.sin(theta) * Math.sin(phi),
+      )
+      // Vary length so the silhouette feels organic (not a perfect star)
+      const length = 4.5 + ((i * 1.617) % 1) * 4.5
+      return { dir, length, hue: i / N }
+    })
+  }, [])
+
+  // Light beams — flat rectangles fanning out, additive blended
+  const beams = useMemo(() => {
+    const N = 18
+    return Array.from({ length: N }).map((_, i) => {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / N)
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i + 0.7
+      const dir = new THREE.Vector3(
+        Math.cos(theta) * Math.sin(phi),
+        Math.cos(phi),
+        Math.sin(theta) * Math.sin(phi),
+      )
+      const len = 16 + ((i * 0.83) % 1) * 10
+      return { dir, len }
+    })
+  }, [])
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime
+    if (sliceMatRef.current) {
+      sliceMatRef.current.uniforms.time.value = t
+      sliceMatRef.current.uniforms.uHovered.value = hovered ? 1 : 0
     }
     if (groupRef.current) {
-      // Slow drift / breathe
-      groupRef.current.position.y = position[1] + Math.sin(t * 0.5) * 0.6
+      // Slow base rotation
+      groupRef.current.rotation.y = t * 0.04
+      groupRef.current.rotation.z = Math.sin(t * 0.13) * 0.08
+      // Glitchy 2% chance per frame to jitter position briefly
+      const glitch = Math.random() < 0.025 ? (Math.random() - 0.5) * 0.6 : 0
+      groupRef.current.position.x = position[0] + glitch
+      groupRef.current.position.y = position[1] + Math.sin(t * 0.4) * 0.4
     }
-    if (ringRef.current) ringRef.current.rotation.z = t * 0.08
-    if (innerRingRef.current) innerRingRef.current.rotation.z = -t * 0.13
+    if (coreInnerRef.current) {
+      const pulse = 1 + Math.sin(t * 1.6) * 0.16 + (hovered ? 0.18 : 0)
+      coreInnerRef.current.scale.setScalar(pulse)
+    }
+    if (haloRef.current) {
+      const breathe = 1 + Math.sin(t * 0.9) * 0.06
+      haloRef.current.scale.setScalar(breathe)
+    }
+    if (shardsGroupRef.current) {
+      // Counter-rotate the shards
+      shardsGroupRef.current.rotation.y = -t * 0.09
+      shardsGroupRef.current.rotation.x = Math.sin(t * 0.07) * 0.12
+    }
+    if (beamsGroupRef.current) {
+      // Beams sweep
+      beamsGroupRef.current.rotation.y = t * 0.18
+      beamsGroupRef.current.rotation.x = Math.cos(t * 0.11) * 0.18
+    }
   })
 
-  // Make the rift always face the camera-ish (rotate around X so the disc reads vertically)
   return (
-    <group ref={groupRef} position={position} rotation={[0, 0, 0]}>
-      {/* Inner swirling vortex — the clickable target */}
+    <group ref={groupRef} position={position}>
+      {/* Big invisible click/hover sphere wrapping everything */}
       <mesh
         onClick={(e) => {
           e.stopPropagation()
@@ -142,11 +197,40 @@ export default function Rift({ onClick, universe }: RiftProps) {
           document.body.style.cursor = "default"
           setHovered(false)
         }}
-        scale={hovered ? 1.08 : 1}
       >
-        <planeGeometry args={[5, 6.5]} />
+        <sphereGeometry args={[14, 16, 16]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={false} />
+      </mesh>
+
+      {/* Wide ambient glow */}
+      <mesh ref={haloRef}>
+        <sphereGeometry args={[8.5, 32, 32]} />
+        <meshBasicMaterial
+          color={colors.a}
+          transparent
+          opacity={0.085}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Mid halo */}
+      <mesh>
+        <sphereGeometry args={[3.5, 32, 32]} />
+        <meshBasicMaterial
+          color={colors.b}
+          transparent
+          opacity={0.22}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Vortex disc — billboard plane with the swirl shader */}
+      <mesh>
+        <planeGeometry args={[8, 8]} />
         <shaderMaterial
-          ref={matRef}
+          ref={sliceMatRef}
           transparent
           depthWrite={false}
           side={THREE.DoubleSide}
@@ -157,58 +241,87 @@ export default function Rift({ onClick, universe }: RiftProps) {
             uColorB: { value: colors.b },
             uHovered: { value: 0 },
           }}
-          vertexShader={VORTEX_VERT}
-          fragmentShader={VORTEX_FRAG}
+          vertexShader={CORE_VERT}
+          fragmentShader={CORE_FRAG}
         />
       </mesh>
 
-      {/* Outer thin glowing ring */}
-      <mesh ref={ringRef}>
-        <torusGeometry args={[2.6, 0.05, 12, 96]} />
+      {/* Bright pulsing core */}
+      <mesh ref={coreInnerRef}>
+        <icosahedronGeometry args={[1.2, 1]} />
         <meshBasicMaterial
-          color={colors.ring}
+          color={colors.emissive}
           transparent
-          opacity={hovered ? 0.95 : 0.7}
+          opacity={0.9}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
       </mesh>
 
-      {/* Inner thinner ring */}
-      <mesh ref={innerRingRef}>
-        <torusGeometry args={[2.0, 0.03, 12, 80]} />
-        <meshBasicMaterial
-          color={colors.ring}
-          transparent
-          opacity={hovered ? 0.7 : 0.45}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
+      {/* Crystal shards radiating outward — like a shattered frozen star */}
+      <group ref={shardsGroupRef}>
+        {shards.map((s, i) => {
+          const half = s.length / 2
+          const pos = s.dir.clone().multiplyScalar(half + 1.4)
+          const quat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            s.dir,
+          )
+          return (
+            <group key={i} position={pos.toArray()} quaternion={quat}>
+              <mesh scale={[0.55, s.length / 2, 0.55]}>
+                <octahedronGeometry args={[1, 0]} />
+                <meshStandardMaterial
+                  color={colors.shard}
+                  emissive={colors.emissive}
+                  emissiveIntensity={1.4}
+                  roughness={0.18}
+                  metalness={0.82}
+                  flatShading
+                  transparent
+                  opacity={0.92}
+                />
+              </mesh>
+              {/* Glow streak around each shard */}
+              <mesh scale={[0.95, s.length / 2 + 0.4, 0.95]}>
+                <octahedronGeometry args={[1, 0]} />
+                <meshBasicMaterial
+                  color={colors.emissive}
+                  transparent
+                  opacity={0.18}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          )
+        })}
+      </group>
 
-      {/* Halo — soft additive billboard plane */}
-      <mesh>
-        <planeGeometry args={[8, 9]} />
-        <shaderMaterial
-          transparent
-          depthWrite={false}
-          side={THREE.DoubleSide}
-          blending={THREE.AdditiveBlending}
-          uniforms={{ uHaloColor: { value: colors.b } }}
-          vertexShader={VORTEX_VERT}
-          fragmentShader={/* glsl */ `
-            uniform vec3 uHaloColor;
-            varying vec2 vUv;
-            void main() {
-              vec2 p = vUv * 2.0 - 1.0;
-              p.x *= 1.1;
-              float d = length(p);
-              float a = exp(-d * d * 3.5) * 0.55;
-              gl_FragColor = vec4(uHaloColor * a, a);
-            }
-          `}
-        />
-      </mesh>
+      {/* Light beam streaks — thin additive planes piercing through the core */}
+      <group ref={beamsGroupRef}>
+        {beams.map((b, i) => {
+          const half = b.len / 2
+          const pos = b.dir.clone().multiplyScalar(half)
+          const quat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            b.dir,
+          )
+          return (
+            <mesh key={i} position={pos.toArray()} quaternion={quat}>
+              <planeGeometry args={[0.45, b.len]} />
+              <meshBasicMaterial
+                color={colors.beam}
+                transparent
+                opacity={0.35}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          )
+        })}
+      </group>
     </group>
   )
 }

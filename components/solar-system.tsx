@@ -9,6 +9,8 @@ import type { PlanetEntry } from "@/lib/constants"
 interface SolarSystemProps {
   planets: PlanetEntry[]
   sunVariant: "warm" | "nebula"
+  paused?: boolean
+  onSunClick?: () => void
   onPlanetClick: (planetIndex: number) => void
   onPlanetHover: (planetIndex: number | null) => void
 }
@@ -16,6 +18,8 @@ interface SolarSystemProps {
 export default function SolarSystem({
   planets,
   sunVariant,
+  paused = false,
+  onSunClick,
   onPlanetClick,
   onPlanetHover,
 }: SolarSystemProps) {
@@ -23,7 +27,13 @@ export default function SolarSystem({
 
   return (
     <group ref={systemRef}>
-      <Sun key={sunVariant} position={[0, 0, 0]} variant={sunVariant} />
+      <Sun
+        key={sunVariant}
+        position={[0, 0, 0]}
+        variant={sunVariant}
+        paused={paused}
+        onClick={onSunClick}
+      />
 
       {planets.map((planet, index) => (
         <Planet
@@ -37,6 +47,7 @@ export default function SolarSystem({
           tilt={planet.tilt}
           bump={planet.bump}
           seed={index * 17.31}
+          paused={paused}
           onClick={() => onPlanetClick(index)}
           onHover={(hovered) => onPlanetHover(hovered ? index : null)}
         />
