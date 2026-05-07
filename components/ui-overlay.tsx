@@ -23,27 +23,6 @@ interface UIOverlayProps {
   onTogglePause: () => void
 }
 
-// Tiny 1×1 SVG noise tile, encoded as a data URI. Used as an overlay texture
-// on glass panels — gives a subtle CRT-grain feel without bringing in an asset.
-const NOISE_DATA_URI =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>"
-
-// Chunky "puzzle piece" noise — low frequency + heavy contrast threshold so
-// the result reads as discrete pieces rather than smooth grain. Tiled at
-// 84px so a typical HUD shows ~5 pieces wide.
-const PUZZLE_MASK = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 84'><filter id='b'><feTurbulence type='fractalNoise' baseFrequency='0.11' numOctaves='1' seed='8'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 7.5 -2.7'/></filter><rect width='100%' height='100%' fill='white' filter='url(#b)'/></svg>`,
-)}`
-
-// Horizontal disintegration: panel is fully assembled on the left, increasingly
-// fragmenting through the middle, pure scatter at the right edge. Layer 1 is a
-// horizontal gradient (solid → transparent) and layer 2 is the chunky puzzle
-// noise; mask-composite: intersect keeps only pixels where BOTH layers are
-// opaque, so the gradient sets the silhouette and the noise carves the pieces.
-const DISSOLVE_MASK_IMAGE = `linear-gradient(to right, black 0%, black 38%, rgba(0,0,0,0.78) 58%, rgba(0,0,0,0.32) 82%, transparent 100%), url("${PUZZLE_MASK}")`
-const DISSOLVE_MASK_SIZE = "100% 100%, 84px 84px"
-const DISSOLVE_MASK_REPEAT = "no-repeat, repeat"
-const DISSOLVE_MASK_COMPOSITE = "intersect"
 
 const GLASS_TONES = {
   default: { bg: "rgba(4, 6, 20, 0.58)", blur: 18 },
@@ -79,75 +58,24 @@ function GlassPanel({
   children: React.ReactNode
 }) {
   const { bg, blur } = GLASS_TONES[tone]
-  const border = accentColor ? `${accentColor}30` : "rgba(255,255,255,0.07)"
+  const border = accentColor ? `${accentColor}28` : "rgba(255,255,255,0.06)"
+  // Soft outer glow that bleeds into the surrounding nebula instead of a
+  // hard rectangular drop shadow.
   const shadow = accentColor
-    ? `0 0 0 1px ${accentColor}15, 0 12px 40px rgba(0,0,0,0.5), 0 0 30px ${accentColor}10`
-    : "0 0 0 1px rgba(90,130,255,0.1), 0 12px 40px rgba(0,0,0,0.45)"
+    ? `0 0 28px ${accentColor}18, 0 18px 48px rgba(0,0,0,0.35)`
+    : "0 0 28px rgba(120,140,200,0.10), 0 18px 48px rgba(0,0,0,0.32)"
   return (
     <div
-      className={cn("glass-panel relative rounded-xl overflow-hidden", className)}
+      className={cn("relative rounded-2xl", className)}
       style={{
         background: bg,
         backdropFilter: `blur(${blur}px)`,
         WebkitBackdropFilter: `blur(${blur}px)`,
         border: `1px solid ${border}`,
         boxShadow: shadow,
-        // "Thanos snap" dissolve at the panel rim. Multi-layer mask: smooth
-        // radial fade × tiled noise. Modern browsers only.
-        maskImage: DISSOLVE_MASK_IMAGE,
-        WebkitMaskImage: DISSOLVE_MASK_IMAGE,
-        maskSize: DISSOLVE_MASK_SIZE,
-        WebkitMaskSize: DISSOLVE_MASK_SIZE,
-        maskRepeat: DISSOLVE_MASK_REPEAT,
-        WebkitMaskRepeat: DISSOLVE_MASK_REPEAT,
-        maskComposite: DISSOLVE_MASK_COMPOSITE,
-        WebkitMaskComposite: "source-in",
       }}
     >
-      {/* Scanlines — subtle CRT vibe, faded toward the panel edges */}
-      <div
-        aria-hidden
-        className="glass-scanlines pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(255,255,255,0.022) 2px, rgba(255,255,255,0.022) 3px)",
-          mixBlendMode: "overlay",
-        }}
-      />
-      {/* Grain — film-style noise speckle */}
-      <div
-        aria-hidden
-        className="glass-grain pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: `url("${NOISE_DATA_URI}")`,
-          backgroundSize: "160px 160px",
-          opacity: 0.06,
-          mixBlendMode: "overlay",
-        }}
-      />
-      {/* Shimmer — slow horizontal sweep that re-renders the panel as if it's
-          made of light, dissipating into space at the edges */}
-      <div
-        aria-hidden
-        className="glass-shimmer pointer-events-none absolute inset-0"
-        style={{
-          background: accentColor
-            ? `linear-gradient(115deg, transparent 35%, ${accentColor}18 50%, transparent 65%)`
-            : "linear-gradient(115deg, transparent 35%, rgba(120,170,255,0.10) 50%, transparent 65%)",
-          mixBlendMode: "screen",
-          backgroundSize: "200% 100%",
-        }}
-      />
-      {/* Soft edge dissipation — fades the corners so the panel reads as
-          emerging from the nebula rather than imposed on it */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-xl"
-        style={{
-          boxShadow: `inset 0 0 24px ${accentColor ?? "rgba(0,0,0"}${accentColor ? "00" : ",0.55)"}, inset 0 0 60px rgba(0,0,0,0.18)`,
-        }}
-      />
-      <div className="relative">{children}</div>
+      {children}
     </div>
   )
 }
@@ -832,28 +760,6 @@ export default function UIOverlay({
       </div>
 
       <style jsx>{`
-        /* Glass-panel shimmer — slow horizontal sweep so panels feel alive */
-        :global(.glass-shimmer) {
-          animation: shimmerSweep 9s ease-in-out infinite;
-        }
-        @keyframes shimmerSweep {
-          0%   { background-position: -100% 0; opacity: 0.0; }
-          15%  { opacity: 0.85; }
-          50%  { background-position: 100% 0; opacity: 0.85; }
-          65%  { opacity: 0.0; }
-          100% { background-position: 200% 0; opacity: 0.0; }
-        }
-
-        /* Slow drift on the noise mask layer so the puzzle pieces appear to
-           rearrange — the gradient layer stays at 0% so the silhouette is
-           stable; only the noise (second layer) shifts. */
-        :global(.glass-panel) {
-          animation: panelPuzzleDrift 11s linear infinite;
-        }
-        @keyframes panelPuzzleDrift {
-          from { mask-position: 0% 0%, 0 0;   -webkit-mask-position: 0% 0%, 0 0; }
-          to   { mask-position: 0% 0%, -84px 0; -webkit-mask-position: 0% 0%, -84px 0; }
-        }
 
         /* Hologram animations */
         @keyframes orbitSpin {

@@ -144,6 +144,10 @@ function makePlanetGeometry(
       const g = new THREE.DodecahedronGeometry(size, 1)
       return bump > 0 ? displaceRadial(g, size, bump, seed) : g
     }
+    case "capsule":
+      // Vertical pill shape — reads as a phone / app device for the
+      // self-hack apps planet
+      return new THREE.CapsuleGeometry(size * 0.55, size * 1.0, 12, 32)
     case "sphere":
     default:
       return makeDisplacedSphere(size, segments, bump, seed)

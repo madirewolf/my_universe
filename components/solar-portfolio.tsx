@@ -19,19 +19,83 @@ import UIOverlay from "./ui-overlay"
 
 type Mode = "system" | "planet" | "moon"
 
+// Easing helpers for the rift cinematic.
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3)
+}
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+
+const RIFT_WORLD_POS = new THREE.Vector3(0, 16, -75)
+const RIFT_OVERHEAD = new THREE.Vector3(0, 52, 0)
+
 function CameraController({
   mode,
   isTransitioning,
   setIsTransitioning,
+  riftActive,
+  riftDuration,
 }: {
   mode: Mode
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
+  riftActive: boolean
+  riftDuration: number
 }) {
   const { camera } = useThree()
   const target = useRef(new THREE.Vector3(0, 25, 0))
+  const riftStart = useRef<number | null>(null)
+  const riftStartPos = useRef<THREE.Vector3 | null>(null)
 
-  useFrame(() => {
+  useFrame((state) => {
+    // ── Rift cinematic takes priority ─────────────────────────────────────
+    if (riftActive) {
+      if (riftStart.current === null) {
+        riftStart.current = state.clock.elapsedTime
+        riftStartPos.current = camera.position.clone()
+      }
+      const t01 = Math.min(
+        1,
+        (state.clock.elapsedTime - riftStart.current) / riftDuration,
+      )
+
+      // Rift dir = unit vector from origin to rift in world space
+      const riftDir = RIFT_WORLD_POS.clone().normalize()
+      // Camera "near rift" position — 2.5 units in front of the rift, looking
+      // straight at it. As the camera approaches, the rift fills the view and
+      // the corridor overlay fades in to take over.
+      const nearRift = RIFT_WORLD_POS.clone().sub(riftDir.multiplyScalar(2.5))
+
+      if (t01 < 0.4) {
+        // Phase A: ease IN toward the rift
+        const phaseT = easeOutCubic(t01 / 0.4)
+        camera.position.lerpVectors(riftStartPos.current!, nearRift, phaseT)
+        camera.lookAt(RIFT_WORLD_POS)
+      } else if (t01 < 0.6) {
+        // Phase B: hold close to the rift while the corridor overlay covers
+        // the screen. Universe swap fires inside this window via the
+        // RiftCorridor onMidpoint callback.
+        camera.position.copy(nearRift)
+        camera.lookAt(RIFT_WORLD_POS)
+      } else if (t01 < 1) {
+        // Phase C: pull OUT to the new universe's overhead system view
+        const phaseT = easeInOutCubic((t01 - 0.6) / 0.4)
+        camera.position.lerpVectors(nearRift, RIFT_OVERHEAD, phaseT)
+        camera.lookAt(0, 0, 0)
+      } else {
+        camera.position.copy(RIFT_OVERHEAD)
+        camera.lookAt(0, 0, 0)
+      }
+      return
+    }
+
+    if (riftStart.current !== null) {
+      // Rift just finished — let normal camera handling take over
+      riftStart.current = null
+      riftStartPos.current = null
+    }
+
     if (!isTransitioning) return
     if (mode === "moon") {
       target.current.set(0, 1.5, 9.5)
@@ -178,6 +242,8 @@ export default function SolarPortfolio() {
             mode={mode}
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
+            riftActive={riftActive}
+            riftDuration={4}
           />
 
           <ambientLight intensity={LIGHTING.ambient} />
@@ -221,8 +287,7 @@ export default function SolarPortfolio() {
               flies through, and fades out. Universe swap fires at the midpoint. */}
           <RiftCorridor
             active={riftActive}
-            duration={2.8}
-            edgeFade={0.18}
+            duration={4}
             onMidpoint={() => {
               setUniverse((u) => (u === "professional" ? "personal" : "professional"))
               setIsTransitioning(true)

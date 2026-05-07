@@ -28,6 +28,7 @@ export type PlanetShape =
   | "torus"
   | "torusKnot"
   | "dodecahedron"
+  | "capsule"
 
 // PlanetEntry bundles everything about a planet — orbital params, presentation, content.
 export interface PlanetEntry {
@@ -270,6 +271,78 @@ const PROFESSIONAL: UniverseConfig = {
           technologies: ["Python", "OpenCV", "EKF", "YOLOv8", "Eye-Tracking", "PyTorch", "scikit-learn"],
           color: "#80f0ff",
           link: "https://5gcx.ai",
+        },
+      ],
+    },
+    {
+      type: "personal",
+      distance: 32,
+      speed: 0.0038,
+      size: 1.05,
+      phase: 2.8,
+      tilt: -0.16,
+      bump: 0,
+      shape: "capsule",
+      name: "Self-Hack",
+      description: "Apps in progress. Tech as a layer between us and our biology — body, attention, sleep.",
+      color: "#c8ff40",
+      tags: ["Mobile", "Self-Optimization", "Kotlin", "In Progress"],
+      landmarks: [
+        {
+          name: "Redline — Voice-Coached Fitness",
+          category: "Body / Mobile",
+          description:
+            "Android fitness tracker with live voice coaching during workouts — tells you when you're slowing, when to push, when to rest. Built on Jetpack Compose + Hilt + Room. The point: turn the workout phone into a coach, not a screen.",
+          technologies: [
+            "Kotlin",
+            "Jetpack Compose",
+            "Hilt",
+            "Room",
+            "voice coaching",
+            "wearable integration",
+          ],
+          color: "#c8ff40",
+        },
+        {
+          name: "Reel_block — Reclaim Your Attention",
+          category: "Attention / Mobile",
+          description:
+            "Android Accessibility Service that intercepts Instagram Reels (and other doom-scroll surfaces) — kills the infinite-scroll loop without forcing you to delete the app. Built so the apps that hijack your nervous system give it back when you ask them to.",
+          technologies: [
+            "Kotlin",
+            "Accessibility Service",
+            "Instagram",
+            "focus tooling",
+            "anti-doomscroll",
+          ],
+          color: "#a8e828",
+        },
+        {
+          name: "Lucid — Smart Wake (in design)",
+          category: "Sleep / Wearables",
+          description:
+            "Alarm that doesn't just hit you with a noise at a fixed time. Reads heart-rate variability + motion from a watch to estimate sleep stage, then triggers in the next light-REM window — so you surface naturally rather than getting cortisol-slapped out of deep sleep. Working name; rename in lib/constants.ts.",
+          technologies: [
+            "WearOS · watch HRV",
+            "REM-stage estimation",
+            "circadian timing",
+            "Android",
+            "in design",
+          ],
+          color: "#88e060",
+        },
+        {
+          name: "What I'm Hacking",
+          category: "Thesis",
+          description:
+            "Three apps, one goal: tech as a deliberate layer between us and our biology. Not to escape it, but to relate to it on better terms. Body coaching, attention reclamation, and sleep-cycle alignment all aim at the same target — making the human stack more humane to live inside.",
+          technologies: [
+            "self as platform",
+            "tech as scaffold",
+            "biology hack",
+            "deliberate friction",
+          ],
+          color: "#d8ff80",
         },
       ],
     },

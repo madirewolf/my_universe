@@ -16,10 +16,8 @@ import type { ShaderMaterial } from "three"
 
 interface RiftCorridorProps {
   active: boolean
-  /** Total transition length in seconds (in + corridor + out). */
+  /** Total transition length in seconds (camera-in + corridor + camera-out). */
   duration?: number
-  /** Fade-in / fade-out ramp length (each side) as a fraction of duration. */
-  edgeFade?: number
   onMidpoint?: () => void
   onComplete?: () => void
 }
@@ -145,8 +143,7 @@ const FRAG = /* glsl */ `
 
 export default function RiftCorridor({
   active,
-  duration = 2.8,
-  edgeFade = 0.18,
+  duration = 4,
   onMidpoint,
   onComplete,
 }: RiftCorridorProps) {
@@ -191,10 +188,13 @@ export default function RiftCorridor({
       setRender(false)
     }
 
-    // Triangular fade — ramp up over edgeFade, hold, ramp down over edgeFade
-    let opacity = 1
-    if (t01 < edgeFade) opacity = t01 / edgeFade
-    else if (t01 > 1 - edgeFade) opacity = (1 - t01) / edgeFade
+    // Corridor is invisible until the camera has flown into the rift; then
+    // fades in (40-45%), holds full (45-55%, universe swap fires at 50%),
+    // fades out (55-60%), and stays hidden while the camera flies away.
+    let opacity = 0
+    if (t01 >= 0.4 && t01 < 0.45) opacity = (t01 - 0.4) / 0.05
+    else if (t01 >= 0.45 && t01 <= 0.55) opacity = 1
+    else if (t01 > 0.55 && t01 <= 0.6) opacity = (0.6 - t01) / 0.05
     opacity = Math.max(0, Math.min(1, opacity))
 
     m.uniforms.uTime.value = state.clock.elapsedTime
