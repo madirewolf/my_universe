@@ -632,10 +632,11 @@ const PERSONAL: UniverseConfig = {
           name: "Home — Persian Gulf, Kuwaiti Desert",
           category: "Childhood vastness",
           description:
-            "I grew up minutes from the Persian Gulf — that vast ocean a short walk from my door. Then there's the Kuwaiti desert: BBQs out there, infinite sands going on forever. Best memory of all: dragging a telescope into the middle of the desert with a friend in the middle of the night and seeing Jupiter and Saturn. The desert + the sky, no shielding, just looking up.",
+            "I grew up minutes from the Persian Gulf — that vast ocean a short walk from my door. Then there's the Kuwaiti desert: BBQs out there, infinite sands going on forever, ATVing across the dunes. Best memory of all: dragging a telescope into the middle of the desert with a friend in the middle of the night and seeing Jupiter and Saturn. The desert + the sky, no shielding, just looking up.",
           technologies: [
             "Persian Gulf",
             "Kuwait desert",
+            "ATVing the dunes",
             "telescope nights",
             "Jupiter",
             "Saturn",
@@ -643,19 +644,25 @@ const PERSONAL: UniverseConfig = {
           color: "#90e890",
         },
         {
-          name: "Muskoka Backcountry — First Magic",
+          name: "Canada — Backcountry, Canoes, Cottages",
           category: "Canada",
           description:
-            "First camping trip in Canada — backcountry camping in Muskoka with friends. One of the most magical experiences of my life. Pure wilderness with no infrastructure between you and it. The trip you measure other trips against.",
-          technologies: ["Muskoka", "backcountry", "wilderness", "first time", "Canada"],
+            "First camping trip in Canada was backcountry camping in Muskoka with friends — one of the most magical experiences of my life. Then canoeing through the Canadian nature for the first time. Getting rained on intensely on the docks and just laying there, taking it all in. Hiking through forests with friends near their cottages. Pure wilderness with no infrastructure between you and it. The trips you measure other trips against.",
+          technologies: [
+            "Muskoka backcountry",
+            "canoeing",
+            "rain on the docks",
+            "cottage hikes",
+            "first time",
+          ],
           color: "#b0f8a0",
         },
         {
           name: "What nature means to me",
           category: "Personal note",
           description:
-            "Placeholder — write this in your own voice when ready. The meta-theme is already showing up across these places: light pollution as a metaphor for everything tech shields us from. Take away the shielding, look up, look back, see what was there the whole time. (Edit in lib/constants.ts.)",
-          technologies: ["Personal", "Vastness", "Time"],
+            "Genuinely nothing makes me feel as alive. Whether it's the stars in Wadi Rum, ruins in Petra, the Kuwaiti desert at night with a telescope, ATVing the dunes, canoeing through Canadian wilderness, hiking near a cottage, or just laying on a dock getting rained on — being near nature is the closest thing I get to being fully present. The meta-theme keeps showing up: light pollution as a metaphor for everything tech shields us from. Take away the shielding, look up, look back, and what was there the whole time is just there.",
+          technologies: ["Aliveness", "Presence", "Vastness", "Time"],
           color: "#c0ffc0",
         },
       ],
