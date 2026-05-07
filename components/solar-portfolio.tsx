@@ -11,6 +11,7 @@ import StarField from "./star-field"
 import StarNest from "./star-nest"
 import Background from "./background"
 import Nebula from "./nebula"
+import SpaceAmbience from "./space-ambience"
 import CosmicDust from "./cosmic-dust"
 import Rift from "./rift"
 import RiftCorridor, {
@@ -304,6 +305,7 @@ export default function SolarPortfolio() {
           />
           <StarField />
           <Nebula variant={config.backgroundVariant} />
+          <SpaceAmbience variant={config.backgroundVariant} />
           <CosmicDust variant={config.backgroundVariant} />
           <Environment preset="night" />
           <CameraController
