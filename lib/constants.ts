@@ -596,25 +596,67 @@ const PERSONAL: UniverseConfig = {
       tilt: 0.06,
       bump: 0.13,
       name: "Nature",
-      description: "The outside world.",
+      description: "Vastness, time, and the things tech shields us from.",
       color: "#80e060",
-      tags: ["Hiking", "Plants", "Wildlife", "Water"],
+      tags: ["Stargazing", "Ruins", "Desert", "Wilderness"],
       landmarks: [
         {
-          name: "Favourite Places",
-          category: "Spots I keep going back to",
+          name: "Wadi Rum — Stars I Couldn't See Before",
+          category: "Jordan",
           description:
-            "Placeholder — trails, parks, lakes, viewpoints. (Edit this in lib/constants.ts.)",
-          technologies: ["trail", "park", "lake"],
+            "I'll never forget stargazing in Wadi Rum. I saw the infinite amount of stars that had always been right there, my whole life — yet I could never see them until that night when there was finally no light pollution. It made me reflect on tech and the role it plays in our lives. How we're, in many ways, controlled by our environment and shielded so heavily that the actual sky becomes invisible. Take the shielding away and the universe is just there.",
+          technologies: [
+            "Wadi Rum",
+            "Jordan",
+            "no light pollution",
+            "infinite stars",
+            "tech as shielding",
+          ],
           color: "#80e060",
         },
         {
-          name: "Field Notes",
-          category: "Things I've noticed",
+          name: "Old Worlds — Petra, Dead Sea, Bosphorus, Levant",
+          category: "Civilizational time",
           description:
-            "Placeholder — bird sightings, plant ids, weather you remember, seasons. (Edit this in lib/constants.ts.)",
-          technologies: ["bird", "plant", "season"],
+            "Petra and the Dead Sea — every step, a new civilization that used to be there, died, disappeared, and now all that remains are their homes etched into stone mountains. The fields of olive trees stretching across the Levant. The Strait of Istanbul — the Bosphorus — glistening under the sun, so many people died for it. Something in me yearns for archaeology and ruins of the past. As stereotypical as that is.",
+          technologies: [
+            "Petra",
+            "Dead Sea",
+            "Bosphorus",
+            "Levant olives",
+            "archaeology",
+          ],
           color: "#a0ff80",
+        },
+        {
+          name: "Home — Persian Gulf, Kuwaiti Desert",
+          category: "Childhood vastness",
+          description:
+            "I grew up minutes from the Persian Gulf — that vast ocean a short walk from my door. Then there's the Kuwaiti desert: BBQs out there, infinite sands going on forever. Best memory of all: dragging a telescope into the middle of the desert with a friend in the middle of the night and seeing Jupiter and Saturn. The desert + the sky, no shielding, just looking up.",
+          technologies: [
+            "Persian Gulf",
+            "Kuwait desert",
+            "telescope nights",
+            "Jupiter",
+            "Saturn",
+          ],
+          color: "#90e890",
+        },
+        {
+          name: "Muskoka Backcountry — First Magic",
+          category: "Canada",
+          description:
+            "First camping trip in Canada — backcountry camping in Muskoka with friends. One of the most magical experiences of my life. Pure wilderness with no infrastructure between you and it. The trip you measure other trips against.",
+          technologies: ["Muskoka", "backcountry", "wilderness", "first time", "Canada"],
+          color: "#b0f8a0",
+        },
+        {
+          name: "What nature means to me",
+          category: "Personal note",
+          description:
+            "Placeholder — write this in your own voice when ready. The meta-theme is already showing up across these places: light pollution as a metaphor for everything tech shields us from. Take away the shielding, look up, look back, see what was there the whole time. (Edit in lib/constants.ts.)",
+          technologies: ["Personal", "Vastness", "Time"],
+          color: "#c0ffc0",
         },
       ],
     },
