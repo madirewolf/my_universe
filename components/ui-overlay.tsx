@@ -8,6 +8,25 @@ import BackgroundMusic from "./background-music"
 
 type Mode = "system" | "planet" | "moon"
 
+// ── Mobile detection ──────────────────────────────────────────────────────
+// Single source of truth for the desktop/mobile split. Desktop pixel-perfect
+// stays the same; mobile gets tighter padding, smaller fonts, repositioned
+// joystick, and hides hover-only UI like the planet preview tooltip.
+const MOBILE_QUERY = "(max-width: 768px)"
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mql = window.matchMedia(query)
+    const update = () => setMatches(mql.matches)
+    update()
+    mql.addEventListener("change", update)
+    return () => mql.removeEventListener("change", update)
+  }, [query])
+  return matches
+}
+
 interface UIOverlayProps {
   universe: Universe
   config: UniverseConfig
@@ -100,37 +119,42 @@ function NavBtn({ onClick, children }: { onClick: () => void; children: React.Re
 function NavDial({
   onJoystick,
   accentColor,
+  isMobile = false,
 }: {
   onJoystick: (vel: { x: number; y: number }) => void
   accentColor: string
+  isMobile?: boolean
 }) {
-  const SIZE = 150
+  // Smaller dial on mobile so it leaves room for content.
+  const SIZE = isMobile ? 110 : 150
   const HALF = SIZE / 2
-  const RING_R = 58
+  const RING_R = isMobile ? 42 : 58
   const containerRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
 
   const ticks = useMemo(() => {
+    // Tick positions are derived from RING_R so the dial scales cleanly.
     return Array.from({ length: 24 }).map((_, i) => {
       const ang = (i / 24) * Math.PI * 2 - Math.PI / 2
       const isCardinal = i % 6 === 0
       const isMid = i % 3 === 0
-      const inn = isCardinal ? 52 : isMid ? 56 : 58.5
+      const inn = isCardinal ? RING_R - 6 : isMid ? RING_R - 2 : RING_R + 0.5
+      const out = RING_R + 6
       const op = isCardinal ? 0.32 : isMid ? 0.18 : 0.1
       return (
         <line
           key={i}
           x1={HALF + Math.cos(ang) * inn}
           y1={HALF + Math.sin(ang) * inn}
-          x2={HALF + Math.cos(ang) * 64}
-          y2={HALF + Math.sin(ang) * 64}
+          x2={HALF + Math.cos(ang) * out}
+          y2={HALF + Math.sin(ang) * out}
           stroke={`rgba(255,255,255,${op})`}
           strokeWidth={isCardinal ? 1.4 : 1}
         />
       )
     })
-  }, [])
+  }, [HALF, RING_R])
 
   const updatePos = (clientX: number, clientY: number) => {
     const rect = containerRef.current?.getBoundingClientRect()
@@ -176,7 +200,14 @@ function NavDial({
   return (
     <div
       ref={containerRef}
-      className="absolute top-1/2 -translate-y-1/2 right-12 pointer-events-auto"
+      className={cn(
+        "absolute pointer-events-auto",
+        // Desktop: vertically-centered on the right edge.
+        // Mobile: bottom-right corner just above the social/pause row.
+        isMobile
+          ? "bottom-24 right-3"
+          : "top-1/2 -translate-y-1/2 right-12",
+      )}
       style={{ width: SIZE, height: SIZE + 18, touchAction: "none", userSelect: "none" }}
       onPointerDown={(e) => {
         ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -519,6 +550,7 @@ export default function UIOverlay({
   onEnterRift,
   onTogglePause,
 }: UIOverlayProps) {
+  const isMobile = useMediaQuery(MOBILE_QUERY)
   const [glitchText, setGlitchText] = useState(config.glitchSubtitle)
 
   // Reset the glitch text whenever the universe changes
@@ -565,18 +597,31 @@ export default function UIOverlay({
     <>
       {/* Title (system view) */}
       {mode === "system" && (
-        <div className="absolute top-8 left-8 pointer-events-none">
+        <div
+          className={cn(
+            "absolute pointer-events-none",
+            isMobile ? "top-3 left-3 right-3" : "top-8 left-8",
+          )}
+        >
           <GlassPanel>
             <div className="h-px w-full" style={{ background: accentGradient }} />
-            <div className="px-6 py-5">
+            <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
               <div
-                className="text-[10px] font-semibold tracking-[0.28em] uppercase mb-4"
+                className={cn(
+                  "font-semibold tracking-[0.28em] uppercase",
+                  isMobile ? "text-[9px] mb-2" : "text-[10px] mb-4",
+                )}
                 style={{ color: eyebrowColor }}
               >
                 {config.eyebrow}
               </div>
 
-              <div className="text-3xl font-bold text-white tracking-tight mb-1">
+              <div
+                className={cn(
+                  "font-bold text-white tracking-tight mb-1",
+                  isMobile ? "text-xl" : "text-3xl",
+                )}
+              >
                 Welcome to my{" "}
                 <span
                   key={universe}
@@ -593,7 +638,13 @@ export default function UIOverlay({
                 </span>
               </div>
 
-              <div className="text-sm font-medium mb-5" style={{ color: "rgba(255,255,255,0.72)" }}>
+              <div
+                className={cn(
+                  "font-medium",
+                  isMobile ? "text-xs mb-3" : "text-sm mb-5",
+                )}
+                style={{ color: "rgba(255,255,255,0.72)" }}
+              >
                 or rather my{" "}
                 <span
                   className="glitch-text relative inline-block font-bold"
@@ -604,15 +655,21 @@ export default function UIOverlay({
               </div>
 
               <div
-                className="mb-4 h-px"
+                className={cn("h-px", isMobile ? "mb-2" : "mb-4")}
                 style={{ background: "linear-gradient(90deg, rgba(255,255,255,0.1), transparent)" }}
               />
 
-              <div className="text-xs tracking-wide" style={{ color: "rgba(255,255,255,0.38)" }}>
-                Hover &amp; click any planet to explore
+              <div
+                className={cn(
+                  "tracking-wide",
+                  isMobile ? "text-[10px]" : "text-xs",
+                )}
+                style={{ color: "rgba(255,255,255,0.38)" }}
+              >
+                {isMobile ? "Tap any planet to explore" : "Hover & click any planet to explore"}
               </div>
 
-              <div className="mt-4">
+              <div className={cn(isMobile ? "mt-2" : "mt-4")}>
                 <RiftHint universe={universe} onClick={onEnterRift} />
               </div>
             </div>
@@ -623,20 +680,38 @@ export default function UIOverlay({
       {/* Planet detail navigation */}
       {mode === "planet" && selected && (
         <>
-          <div className="absolute top-8 left-8 right-8 flex justify-between items-start pointer-events-auto">
+          <div
+            className={cn(
+              "absolute pointer-events-auto",
+              isMobile
+                ? "top-3 left-3 right-3 flex flex-col gap-2"
+                : "top-8 left-8 right-8 flex justify-between items-start",
+            )}
+          >
             <GlassPanel>
               <div className="h-px w-full" style={{ background: accentGradient }} />
-              <div className="px-6 py-5">
+              <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
                 <div
-                  className="text-[10px] font-semibold tracking-[0.28em] uppercase mb-3"
+                  className={cn(
+                    "font-semibold tracking-[0.28em] uppercase",
+                    isMobile ? "text-[9px] mb-2" : "text-[10px] mb-3",
+                  )}
                   style={{ color: eyebrowColor }}
                 >
                   Currently Exploring
                 </div>
-                <div className="text-2xl font-bold text-white tracking-tight mb-1">
+                <div
+                  className={cn(
+                    "font-bold text-white tracking-tight mb-1",
+                    isMobile ? "text-lg" : "text-2xl",
+                  )}
+                >
                   {selected.name}
                 </div>
-                <div className="text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+                <div
+                  className={cn(isMobile ? "text-xs" : "text-sm")}
+                  style={{ color: "rgba(255,255,255,0.55)" }}
+                >
                   {selected.description}
                 </div>
               </div>
@@ -644,33 +719,47 @@ export default function UIOverlay({
 
             <button
               onClick={onBackToSystem}
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-150
-                bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60
-                hover:border-[rgba(100,160,255,0.35)] hover:text-white/95"
+              className={cn(
+                "flex items-center gap-2 rounded-xl font-medium transition-all duration-150",
+                "bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60",
+                "hover:border-[rgba(100,160,255,0.35)] hover:text-white/95",
+                isMobile ? "self-start px-3 py-2 text-xs" : "px-4 py-2.5 text-sm",
+              )}
               style={{ WebkitBackdropFilter: "blur(18px)" }}
             >
-              <Home size={15} />
-              Back to Solar System
+              <Home size={isMobile ? 13 : 15} />
+              {isMobile ? "Back" : "Back to Solar System"}
             </button>
           </div>
 
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none text-white/50 text-xs tracking-wide">
-            Click on the orbiting moons to explore projects
-          </div>
+          {!isMobile && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none text-white/50 text-xs tracking-wide">
+              Click on the orbiting moons to explore projects
+            </div>
+          )}
 
-          <NavDial onJoystick={onJoystick} accentColor={selected.color} />
+          <NavDial
+            onJoystick={onJoystick}
+            accentColor={selected.color}
+            isMobile={isMobile}
+          />
         </>
       )}
 
-      {/* Hover tooltip */}
-      {hovered && mode === "system" && <HoverTooltip planet={hovered} />}
+      {/* Hover tooltip — desktop only (no hover on touch devices) */}
+      {!isMobile && hovered && mode === "system" && <HoverTooltip planet={hovered} />}
 
       {/* Moon mode: slim breadcrumb HUD + back-to-planet button.
           The actual project info is rendered diegetically as floating
           holograms around the data crystal in MoonView. */}
       {mode === "moon" && selected && selectedLandmark && (
         <>
-          <div className="absolute top-8 left-8 pointer-events-auto">
+          <div
+            className={cn(
+              "absolute pointer-events-auto",
+              isMobile ? "top-3 left-3 right-3" : "top-8 left-8",
+            )}
+          >
             <GlassPanel accentColor={selectedLandmark.color}>
               <div
                 className="h-px w-full"
@@ -678,18 +767,26 @@ export default function UIOverlay({
                   background: `linear-gradient(90deg, ${selectedLandmark.color}cc, ${selectedLandmark.color}33, transparent 70%)`,
                 }}
               />
-              <div className="px-5 py-4">
+              <div className={cn(isMobile ? "px-4 py-3" : "px-5 py-4")}>
                 <div
-                  className="text-[10px] font-semibold tracking-[0.22em] uppercase mb-1"
+                  className={cn(
+                    "font-semibold tracking-[0.22em] uppercase mb-1",
+                    isMobile ? "text-[9px]" : "text-[10px]",
+                  )}
                   style={{ color: `${selectedLandmark.color}cc` }}
                 >
                   Now Inspecting
                 </div>
-                <div className="text-lg font-bold text-white tracking-tight leading-tight">
+                <div
+                  className={cn(
+                    "font-bold text-white tracking-tight leading-tight",
+                    isMobile ? "text-base" : "text-lg",
+                  )}
+                >
                   {selectedLandmark.name}
                 </div>
                 <div
-                  className="text-[11px] mt-1"
+                  className={cn("mt-1", isMobile ? "text-[10px]" : "text-[11px]")}
                   style={{ color: "rgba(255,255,255,0.45)" }}
                 >
                   {selected.name}
@@ -700,29 +797,48 @@ export default function UIOverlay({
 
           <button
             onClick={onBackFromMoon}
-            className="absolute top-8 right-8 flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-150
-              bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60
-              hover:border-[rgba(100,160,255,0.35)] hover:text-white/95 pointer-events-auto"
+            className={cn(
+              "absolute flex items-center gap-2 rounded-xl font-medium transition-all duration-150",
+              "bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60",
+              "hover:border-[rgba(100,160,255,0.35)] hover:text-white/95 pointer-events-auto",
+              isMobile
+                ? "bottom-3 left-1/2 -translate-x-1/2 px-3 py-2 text-xs"
+                : "top-8 right-8 px-4 py-2.5 text-sm",
+            )}
             style={{ WebkitBackdropFilter: "blur(18px)" }}
           >
-            <ArrowLeft size={15} />
-            Back to {selected.name.replace(/\s*Planet\s*$/i, "")}
+            <ArrowLeft size={isMobile ? 13 : 15} />
+            {isMobile
+              ? "Back"
+              : `Back to ${selected.name.replace(/\s*Planet\s*$/i, "")}`}
           </button>
 
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none text-white/45 text-xs tracking-wide">
-            Drag to orbit · scroll to zoom
-          </div>
+          {!isMobile && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none text-white/45 text-xs tracking-wide">
+              Drag to orbit · scroll to zoom
+            </div>
+          )}
         </>
       )}
 
       {/* Social links */}
-      <div className="absolute bottom-8 right-8 flex gap-3 pointer-events-auto">
+      <div
+        className={cn(
+          "absolute flex pointer-events-auto",
+          isMobile ? "bottom-3 right-3 gap-2" : "bottom-8 right-8 gap-3",
+        )}
+      >
         <SocialLink href="https://www.instagram.com/limiliminal/" icon={Instagram} />
         <SocialLink href="https://www.linkedin.com/in/mohammad-abu-daqer/" icon={Linkedin} />
       </div>
 
       {/* Pause / freeze toggle (also: spacebar, or click the sun) + music toggle */}
-      <div className="absolute bottom-8 left-8 flex items-center gap-3 pointer-events-auto">
+      <div
+        className={cn(
+          "absolute flex items-center pointer-events-auto",
+          isMobile ? "bottom-3 left-3 gap-2" : "bottom-8 left-8 gap-3",
+        )}
+      >
         <BackgroundMusic />
         <button
           onClick={onTogglePause}
@@ -741,7 +857,7 @@ export default function UIOverlay({
         >
           {paused ? <Play size={16} /> : <Pause size={16} />}
         </button>
-        {paused && (
+        {paused && !isMobile && (
           <div
             className="text-[10px] font-semibold tracking-[0.28em] uppercase select-none pointer-events-none"
             style={{ color: "rgba(255,200,80,0.85)" }}
@@ -749,7 +865,7 @@ export default function UIOverlay({
             Stasis · Space to resume
           </div>
         )}
-        {!paused && (
+        {!paused && !isMobile && (
           <div
             className="text-[10px] font-medium tracking-[0.18em] uppercase select-none pointer-events-none"
             style={{ color: "rgba(255,255,255,0.32)" }}
