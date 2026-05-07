@@ -208,6 +208,12 @@ export default function Sun({ position, variant = "warm", paused = false, onClic
   const chromosphereRef = useRef<THREE.Mesh>(null)
   const raysRef = useRef<THREE.Group>(null)
 
+  // Effective time — wall clock minus paused time. Used for the gross
+  // rotations (rays, prominences group) so they freeze in place when paused
+  // and pick up smoothly on resume.
+  const effectiveTime = useRef(0)
+  const prevWall = useRef<number | null>(null)
+
   // 6 prominence loops (arcing plasma) anchored at random points around the sun.
   // Each is a half-torus oriented so it loops outward like a magnetic field line.
   const prominences = useMemo(() => {
@@ -244,39 +250,47 @@ export default function Sun({ position, variant = "warm", paused = false, onClic
   }, [])
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime()
-    if (sunMatRef.current) sunMatRef.current.uniforms.uTime.value = t
-    if (coronaMatRef.current) coronaMatRef.current.uniforms.uTime.value = t
+    const wall = state.clock.getElapsedTime()
+    if (prevWall.current !== null && !paused) {
+      effectiveTime.current += wall - prevWall.current
+    }
+    prevWall.current = wall
+    const et = effectiveTime.current
+
+    // Shader uniforms keep wall time — surfaces stay alive during pause.
+    if (sunMatRef.current) sunMatRef.current.uniforms.uTime.value = wall
+    if (coronaMatRef.current) coronaMatRef.current.uniforms.uTime.value = wall
 
     // Subtle breathing glow — slows to a heartbeat when paused so the user
     // sees a clear "stasis" cue at the system's gravitational center.
     if (glowRef.current) {
       const breathe = paused ? 0.5 : 1.8
       const amp = paused ? 0.10 : 0.05
-      const scale = 1 + Math.sin(t * breathe) * amp
+      const scale = 1 + Math.sin(wall * breathe) * amp
       glowRef.current.scale.setScalar(scale)
     }
 
-    // Chromosphere — thin glowing shell that flickers like real plasma
+    // Chromosphere flicker keeps wall time (alive)
     if (chromosphereRef.current) {
-      const flicker = 1 + Math.sin(t * 4.2) * 0.012 + Math.sin(t * 7.7) * 0.008
+      const flicker = 1 + Math.sin(wall * 4.2) * 0.012 + Math.sin(wall * 7.7) * 0.008
       chromosphereRef.current.scale.setScalar(flicker)
     }
 
-    // Prominences pulse independently (each on its own phase)
+    // Prominences: gross rotation uses et (pauses cleanly); per-prominence
+    // pulse uses wall time so they keep "breathing" while paused.
     if (prominencesRef.current) {
-      prominencesRef.current.rotation.y = t * 0.04
+      prominencesRef.current.rotation.y = et * 0.04
       prominencesRef.current.children.forEach((child, i) => {
         const phase = prominences[i]?.phase ?? 0
-        const pulse = 0.85 + Math.sin(t * 1.1 + phase) * 0.18
+        const pulse = 0.85 + Math.sin(wall * 1.1 + phase) * 0.18
         child.scale.setScalar(pulse)
       })
     }
 
-    // Ray streaks rotate slowly — outward solar wind direction
+    // Ray streaks rotate on et — frozen during pause, smooth on resume.
     if (raysRef.current) {
-      raysRef.current.rotation.y = -t * 0.06
-      raysRef.current.rotation.x = Math.sin(t * 0.05) * 0.12
+      raysRef.current.rotation.y = -et * 0.06
+      raysRef.current.rotation.x = Math.sin(et * 0.05) * 0.12
     }
 
     // Make the corona face the camera (billboard)

@@ -187,6 +187,12 @@ export default function Planet({
   const landmarkRefs = useRef<Mesh[]>([])
   const [hoveredLandmark, setHoveredLandmark] = useState<number | null>(null)
 
+  // "Effective time" — wall clock minus any time spent paused. Used to drive
+  // moon orbits / spins so pause→play resumes smoothly from where motion left
+  // off rather than jumping forward by however long we were paused.
+  const effectiveTime = useRef(0)
+  const prevWall = useRef<number | null>(null)
+
   const landmarks = landmarksProp ?? []
   const orbits = useMemo(() => landmarks.map((_, i) => moonOrbit(i)), [landmarks.length])
 
@@ -223,6 +229,13 @@ export default function Planet({
   )
 
   useFrame((state) => {
+    const wall = state.clock.elapsedTime
+    if (prevWall.current !== null && !paused) {
+      effectiveTime.current += wall - prevWall.current
+    }
+    prevWall.current = wall
+    const et = effectiveTime.current
+
     // Orbit revolution — gated by `paused` so the user can freeze the system
     // and click any planet at leisure.
     if (!isDetailView && orbitRef.current && speed && !paused) {
@@ -259,24 +272,22 @@ export default function Planet({
     }
 
     if (isDetailView) {
-      const t = state.clock.elapsedTime
-      if (!paused) {
-        orbits.forEach((o, i) => {
-          const g = moonOrbitRefs.current[i]
-          if (g) g.rotation.y = o.phase + t * o.speed
-        })
-      }
+      // Moons drive off `et` (effective time) so they freeze in place when
+      // paused and resume from exactly where they left off — no jumps.
+      orbits.forEach((o, i) => {
+        const g = moonOrbitRefs.current[i]
+        if (g) g.rotation.y = o.phase + et * o.speed
+      })
 
       landmarkRefs.current.forEach((m, i) => {
         if (m) {
+          // Hover-pulse uses wall time so the indicator stays alive during pause.
           m.scale.setScalar(
-            hoveredLandmark === i ? 1.55 + Math.sin(t * 4) * 0.18 : 1.0,
+            hoveredLandmark === i ? 1.55 + Math.sin(wall * 4) * 0.18 : 1.0,
           )
-          if (!paused) {
-            // Crystal moons spin on their own axes — every facet catches light differently
-            m.rotation.y = t * (0.4 + i * 0.07)
-            m.rotation.x = t * (0.25 + i * 0.05) + i * 0.5
-          }
+          // Spin on et — paused moons hold their facets still.
+          m.rotation.y = et * (0.4 + i * 0.07)
+          m.rotation.x = et * (0.25 + i * 0.05) + i * 0.5
         }
       })
     }

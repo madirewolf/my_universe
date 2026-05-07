@@ -181,7 +181,7 @@ export default function SolarPortfolio() {
                 onPlanetClick={handlePlanetClick}
                 onPlanetHover={setHoveredPlanet}
               />
-              <Rift onClick={handleEnterRift} universe={universe} />
+              <Rift onClick={handleEnterRift} universe={universe} paused={paused} />
             </>
           )}
 

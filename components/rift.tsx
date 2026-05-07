@@ -9,6 +9,7 @@ import type { Universe } from "@/lib/constants"
 interface RiftProps {
   onClick: () => void
   universe: Universe
+  paused?: boolean
 }
 
 // Vortex-style additive shader for the central energy core. Slowly drifts +
@@ -80,7 +81,7 @@ interface ShardSpec {
   hue: number
 }
 
-export default function Rift({ onClick, universe }: RiftProps) {
+export default function Rift({ onClick, universe, paused = false }: RiftProps) {
   const groupRef = useRef<Group>(null)
   const coreInnerRef = useRef<Mesh>(null)
   const haloRef = useRef<Mesh>(null)
@@ -88,6 +89,10 @@ export default function Rift({ onClick, universe }: RiftProps) {
   const beamsGroupRef = useRef<Group>(null)
   const sliceMatRef = useRef<THREE.ShaderMaterial>(null)
   const [hovered, setHovered] = useState(false)
+
+  // Effective time for gross rotations so pause/resume is smooth
+  const effectiveTime = useRef(0)
+  const prevWall = useRef<number | null>(null)
 
   // Position FAR off and elevated — bigger but distant so it reads as a
   // rip in space rather than something hovering nearby.
@@ -146,37 +151,46 @@ export default function Rift({ onClick, universe }: RiftProps) {
   }, [])
 
   useFrame((state) => {
-    const t = state.clock.elapsedTime
+    const wall = state.clock.elapsedTime
+    if (prevWall.current !== null && !paused) {
+      effectiveTime.current += wall - prevWall.current
+    }
+    prevWall.current = wall
+    const et = effectiveTime.current
+
+    // Shader time stays on wall clock (the inner vortex keeps swirling
+    // even while paused — it's not "motion", it's the rift breathing).
     if (sliceMatRef.current) {
-      sliceMatRef.current.uniforms.time.value = t
+      sliceMatRef.current.uniforms.time.value = wall
       sliceMatRef.current.uniforms.uHovered.value = hovered ? 1 : 0
     }
     if (groupRef.current) {
-      // Slow base rotation
-      groupRef.current.rotation.y = t * 0.04
-      groupRef.current.rotation.z = Math.sin(t * 0.13) * 0.08
-      // Glitchy 2% chance per frame to jitter position briefly
-      const glitch = Math.random() < 0.025 ? (Math.random() - 0.5) * 0.6 : 0
+      // Gross body rotations driven by et so pause→resume is continuous
+      groupRef.current.rotation.y = et * 0.04
+      groupRef.current.rotation.z = Math.sin(et * 0.13) * 0.08
+      // Glitchy jitter only when running
+      const glitch = !paused && Math.random() < 0.025 ? (Math.random() - 0.5) * 0.6 : 0
       groupRef.current.position.x = position[0] + glitch
-      groupRef.current.position.y = position[1] + Math.sin(t * 0.4) * 0.4
+      groupRef.current.position.y = position[1] + Math.sin(et * 0.4) * 0.4
     }
     if (coreInnerRef.current) {
-      const pulse = 1 + Math.sin(t * 1.6) * 0.16 + (hovered ? 0.18 : 0)
+      // Pulse keeps wall time — rift "lives" even paused
+      const pulse = 1 + Math.sin(wall * 1.6) * 0.16 + (hovered ? 0.18 : 0)
       coreInnerRef.current.scale.setScalar(pulse)
     }
     if (haloRef.current) {
-      const breathe = 1 + Math.sin(t * 0.9) * 0.06
+      const breathe = 1 + Math.sin(wall * 0.9) * 0.06
       haloRef.current.scale.setScalar(breathe)
     }
     if (shardsGroupRef.current) {
-      // Counter-rotate the shards
-      shardsGroupRef.current.rotation.y = -t * 0.09
-      shardsGroupRef.current.rotation.x = Math.sin(t * 0.07) * 0.12
+      // Counter-rotate on et
+      shardsGroupRef.current.rotation.y = -et * 0.09
+      shardsGroupRef.current.rotation.x = Math.sin(et * 0.07) * 0.12
     }
     if (beamsGroupRef.current) {
-      // Beams sweep
-      beamsGroupRef.current.rotation.y = t * 0.18
-      beamsGroupRef.current.rotation.x = Math.cos(t * 0.11) * 0.18
+      // Beams sweep on et
+      beamsGroupRef.current.rotation.y = et * 0.18
+      beamsGroupRef.current.rotation.x = Math.cos(et * 0.11) * 0.18
     }
   })
 
