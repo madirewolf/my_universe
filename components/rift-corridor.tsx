@@ -39,17 +39,12 @@ const FRAG = /* glsl */ `
   uniform vec2  uResolution;
   varying vec2 vUv;
 
-  #define iterations 12
-  #define formuparam 0.53
-  #define volsteps 18
-  #define stepsize 0.10
+  #define iterations 11
+  #define volsteps 22
   #define zoom    0.85
-  #define tile    0.85
-  #define speed   0.32
-  #define brightness 0.0019
-  #define darkmatter 0.30
-  #define distfading 0.73
-  #define saturation 0.85
+  #define speed   0.5
+  #define distfading 0.78
+  #define saturation 0.95
 
   vec3 path(float ti) {
     return vec3(sin(ti), 0.30 - sin(ti * 0.632) * 0.30, cos(ti * 0.5)) * 0.5;
@@ -74,7 +69,6 @@ const FRAG = /* glsl */ `
   void main() {
     vec2 uv = vUv * 2.0 - 1.0;
     uv.y *= uResolution.y / max(uResolution.x, 1.0);
-    vec3 dir = vec3(uv * zoom, 1.0);
 
     float ti = uTime * speed + 0.25;
     vec3 origin = vec3(0.0, 3.11, 0.0);
@@ -84,40 +78,66 @@ const FRAG = /* glsl */ `
     mat2 r1 = mat2(cos(an), sin(an), -sin(an), cos(an));
     an = advec.y * 1.7;
     mat2 r2 = mat2(cos(an), sin(an), -sin(an), cos(an));
+
+    vec3 dir = normalize(vec3(uv * zoom, 1.0));
     dir.yz *= r2;
     dir.xz *= r1;
-    vec3 fromR = from;
-    fromR.xz *= r1;
-    fromR.xy *= r2;
 
-    // Volumetric raymarch
-    float s = 0.1;
+    // Background gradient — purple→magenta vignette so the corridor never
+    // reads as a black void even when raymarch doesn't accumulate energy.
+    vec3 backg = mix(
+      vec3(0.18, 0.08, 0.30),
+      vec3(0.95, 0.45, 0.92),
+      smoothstep(-1.0, 1.0, uv.y * 0.6 + 0.4)
+    );
+
+    // Volumetric raymarch — accumulate energy at every step (not only on
+    // surface hits) so the fractal glows even when the path doesn't graze
+    // a wall directly.
+    float s = 0.0;
     float fade = 1.0;
     float glow = 0.0;
-    vec3 v = vec3(0.0);
+    vec3 col = vec3(0.0);
     vec2 d = vec2(1.0, 0.0);
-    float totdist = 0.0;
 
     for (int r = 0; r < volsteps; r++) {
-      if (d.x > 0.001 && totdist < 3.0) {
-        vec3 p = from + totdist * dir;
+      if (d.x > 0.001 && s < 4.0) {
+        vec3 p = from + s * dir;
         d = de(p);
-        totdist += d.x;
-        if (d.x < 0.015) glow += max(0.0, 0.015 - d.x) * exp(-totdist);
-        v += vec3(s, s * s, s * s * s * s) * d.x * brightness * fade;
+
+        if (d.x < 0.04) {
+          glow += max(0.0, 0.04 - d.x) * exp(-s * 0.55) * 1.4;
+        }
+
+        // Pulsing energy color along the camera path
+        vec3 energyCol = vec3(1.0, 0.55, 0.95)
+          * (1.6 + sin(uTime * 9.0 + p.z * 5.0 + p.x * 3.5)) * 0.22;
+        // Inverse-distance weighting so close-to-walls is brighter
+        float energy = 1.0 / (1.0 + d.x * d.x * 8.0);
+        col += energyCol * energy * fade * 0.10;
+
+        s += max(d.x, 0.05);
         fade *= distfading;
-        s += stepsize;
       }
     }
-    v = mix(vec3(length(v)), v, saturation);
-    vec3 col = v * 0.01;
-    // Pink/violet glow tint to match the rift palette
-    col += glow * vec3(1.05, 0.55, 1.20) * 0.45;
-    col = pow(clamp(col, vec3(0.0), vec3(1.0)), vec3(1.25)) * 1.05;
 
-    // Subtle vignette so the shader feels like a tunnel
+    // Surface hit: bright violet flash that fades with distance
+    if (d.x <= 0.001) {
+      col += vec3(0.85, 0.45, 1.0) * exp(-0.35 * s * s) * 0.6;
+      col = mix(col, backg * 0.55, 1.0 - exp(-0.65 * pow(s, 1.5)));
+    } else {
+      col = mix(col, backg * 0.65, 0.65);
+    }
+
+    col += glow * vec3(1.05, 0.55, 1.20) * 0.95;
+
+    // Tunnel vignette
     float r2v = dot(uv, uv);
-    col *= 1.0 - clamp(r2v * 0.55, 0.0, 1.0);
+    col *= 1.0 - clamp(r2v * 0.42, 0.0, 1.0);
+
+    // Saturation + gamma
+    col = mix(vec3(length(col)), col, saturation);
+    col = pow(clamp(col, vec3(0.0), vec3(1.0)), vec3(1.15));
 
     gl_FragColor = vec4(col, uOpacity);
   }

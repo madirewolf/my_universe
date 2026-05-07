@@ -28,20 +28,20 @@ interface UIOverlayProps {
 const NOISE_DATA_URI =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>"
 
-// Tileable noise pattern used as a mask alpha layer. Where the noise is dark,
-// the mask is transparent → that part of the panel evaporates. Combined with
-// the radial-fade mask layer, this produces the "thanos snap" dissolve at the
-// panel's edges.
-const DUST_MASK = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.4' numOctaves='2' seed='5'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.7 0'/></filter><rect width='100%' height='100%' fill='white' filter='url(#n)'/></svg>`,
+// Chunky "puzzle piece" noise — low frequency + heavy contrast threshold so
+// the result reads as discrete pieces rather than smooth grain. Tiled at
+// 84px so a typical HUD shows ~5 pieces wide.
+const PUZZLE_MASK = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 84 84'><filter id='b'><feTurbulence type='fractalNoise' baseFrequency='0.11' numOctaves='1' seed='8'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 7.5 -2.7'/></filter><rect width='100%' height='100%' fill='white' filter='url(#b)'/></svg>`,
 )}`
 
-// Multi-layer mask: smooth radial fade + tiled dust pattern. mask-composite:
-// intersect (browser default for multi-layer is source-over, so we explicitly
-// set intersect) clips the panel to "where BOTH masks are opaque" — opaque in
-// the centre, particle-pixelated at the rim.
-const DISSOLVE_MASK_IMAGE = `radial-gradient(ellipse 105% 105% at 50% 50%, black 70%, rgba(0,0,0,0.55) 85%, transparent 100%), url("${DUST_MASK}")`
-const DISSOLVE_MASK_SIZE = "100% 100%, 80px 80px"
+// Horizontal disintegration: panel is fully assembled on the left, increasingly
+// fragmenting through the middle, pure scatter at the right edge. Layer 1 is a
+// horizontal gradient (solid → transparent) and layer 2 is the chunky puzzle
+// noise; mask-composite: intersect keeps only pixels where BOTH layers are
+// opaque, so the gradient sets the silhouette and the noise carves the pieces.
+const DISSOLVE_MASK_IMAGE = `linear-gradient(to right, black 0%, black 38%, rgba(0,0,0,0.78) 58%, rgba(0,0,0,0.32) 82%, transparent 100%), url("${PUZZLE_MASK}")`
+const DISSOLVE_MASK_SIZE = "100% 100%, 84px 84px"
 const DISSOLVE_MASK_REPEAT = "no-repeat, repeat"
 const DISSOLVE_MASK_COMPOSITE = "intersect"
 
@@ -842,6 +842,17 @@ export default function UIOverlay({
           50%  { background-position: 100% 0; opacity: 0.85; }
           65%  { opacity: 0.0; }
           100% { background-position: 200% 0; opacity: 0.0; }
+        }
+
+        /* Slow drift on the noise mask layer so the puzzle pieces appear to
+           rearrange — the gradient layer stays at 0% so the silhouette is
+           stable; only the noise (second layer) shifts. */
+        :global(.glass-panel) {
+          animation: panelPuzzleDrift 11s linear infinite;
+        }
+        @keyframes panelPuzzleDrift {
+          from { mask-position: 0% 0%, 0 0;   -webkit-mask-position: 0% 0%, 0 0; }
+          to   { mask-position: 0% 0%, -84px 0; -webkit-mask-position: 0% 0%, -84px 0; }
         }
 
         /* Hologram animations */
