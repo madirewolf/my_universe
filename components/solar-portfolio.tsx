@@ -13,6 +13,7 @@ import Background from "./background"
 import Nebula from "./nebula"
 import CosmicDust from "./cosmic-dust"
 import Rift from "./rift"
+import RiftCorridor from "./rift-corridor"
 import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
 
@@ -57,6 +58,7 @@ export default function SolarPortfolio() {
   const [selectedLandmark, setSelectedLandmark] = useState<Landmark | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [riftActive, setRiftActive] = useState(false)
   // Joystick velocity from the navigation dial (-1..1 each axis). When non-zero
   // a RAF loop integrates it into planetRotation for continuous rotation.
   const joystickRef = useRef({ x: 0, y: 0 })
@@ -133,11 +135,14 @@ export default function SolarPortfolio() {
   }
 
   const handleEnterRift = () => {
+    if (riftActive) return
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setHoveredPlanet(null)
-    setUniverse(u => (u === "professional" ? "personal" : "professional"))
-    setIsTransitioning(true)
+    setRiftActive(true)
+    // Universe swap + camera target reset happen at the *midpoint* of the
+    // corridor transition (RiftCorridor calls onMidpoint at t01 = 0.5), so
+    // the user emerges into the new system view as the fade is reversing.
   }
 
   // (Rotation now driven entirely by the NavDial joystick + the integrator above.)
@@ -211,6 +216,19 @@ export default function SolarPortfolio() {
           {mode === "moon" && selectedLandmark && (
             <MoonView landmark={selectedLandmark} seed={landmarkSeed} />
           )}
+
+          {/* Rift transition — fullscreen Kali-fractal corridor that fades in,
+              flies through, and fades out. Universe swap fires at the midpoint. */}
+          <RiftCorridor
+            active={riftActive}
+            duration={2.8}
+            edgeFade={0.18}
+            onMidpoint={() => {
+              setUniverse((u) => (u === "professional" ? "personal" : "professional"))
+              setIsTransitioning(true)
+            }}
+            onComplete={() => setRiftActive(false)}
+          />
 
           <OrbitControls
             // Pan stays off so rotation is always anchored to the sun (system),
