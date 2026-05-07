@@ -851,6 +851,59 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
         />
       )
 
+    case "pill":
+      // Traditional two-tone pill capsule. Red top, yellow bottom — reads
+      // as a classic medication caplet. Sharp seam at object-space y = 0
+      // with a tiny dark band so the two halves read as separate caps.
+      // Glossy Phong finish. Colors hardcoded so the pill always looks
+      // like a pill regardless of the planet's accent color.
+      return (
+        <shaderMaterial
+          uniforms={{
+            uLightDir: { value: new THREE.Vector3(0.4, 0.6, 0.8).normalize() },
+            uAmbient: { value: 0.42 },
+            uSpecPower: { value: 64.0 },
+            uSpecStrength: { value: 0.5 },
+            uRim: { value: 0.18 },
+            uColorTop: { value: hexToVec3("#dc2626") },     // red
+            uColorBottom: { value: hexToVec3("#fbbf24") },  // yellow
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
+            void main() {
+              vLocal = position;             // object-space position drives the split
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position, 1.0);
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
+            uniform vec3  uLightDir, uColorTop, uColorBottom;
+            varying vec3 vN, vView, vLocal;
+            ${LIGHTING_GLSL}
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              // Crisp split at y = 0. Tiny smoothstep keeps the seam from
+              // aliasing without making it look fuzzy.
+              float t = smoothstep(-0.025, 0.025, vLocal.y);
+              vec3 base = mix(uColorBottom, uColorTop, t);
+              // Faint dark band at the seam — printed-line look.
+              float seam = exp(-pow(vLocal.y / 0.05, 2.0));
+              base *= 1.0 - seam * 0.20;
+              LightOut lo = shade(n, v, l, base, uSpecPower, uSpecStrength, uRim, uAmbient);
+              gl_FragColor = vec4(lo.color, 1.0);
+            }
+          `
+          }
+        />
+      )
+
     default:
       return <meshStandardMaterial color="#888888" roughness={0.5} metalness={0.5} />
   }

@@ -275,7 +275,7 @@ const PROFESSIONAL: UniverseConfig = {
       ],
     },
     {
-      type: "personal",
+      type: "pill",
       distance: 32,
       speed: 0.0038,
       size: 1.05,
@@ -285,7 +285,9 @@ const PROFESSIONAL: UniverseConfig = {
       shape: "capsule",
       name: "Self-Hack",
       description: "Apps in progress. Tech as a layer between us and our biology — body, attention, sleep.",
-      color: "#c8ff40",
+      // Accent for orbit trail / tags / hover. Pill's two halves (red top,
+      // yellow bottom) are hardcoded in the "pill" shader case.
+      color: "#dc2626",
       tags: ["Mobile", "Self-Optimization", "Kotlin", "In Progress"],
       landmarks: [
         {

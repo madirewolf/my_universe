@@ -20,13 +20,13 @@ import UIOverlay from "./ui-overlay"
 type Mode = "system" | "planet" | "moon"
 
 // Easing helpers for the rift cinematic.
-//   easeInCubic  → accelerating dolly-IN (slow start, fast end → "spooling up")
-//   easeOutCubic → decelerating pull-OUT (fast start, slow end → "exiting warp")
+//   easeInCubic    → Phase A: accelerating dolly-IN (slow start, fast end)
+//   easeInOutCubic → Phase C: smooth, lingering dolly-OUT (slow at both ends)
 function easeInCubic(t: number): number {
   return t * t * t
 }
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3)
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
 const RIFT_WORLD_POS = new THREE.Vector3(0, 16, -75)
@@ -59,15 +59,18 @@ function CameraController({
 
   useFrame((state) => {
     // ── Rift cinematic takes priority ─────────────────────────────────────
-    // Three-phase camera choreography:
-    //   • Phase A (0.0-0.4): accelerating dolly IN to the rift core. Gaze
+    // Three-phase camera choreography (4s default duration):
+    //   • Phase A (0.00-0.40): accelerating dolly IN to the rift core. Gaze
     //     pans smoothly from the sun (origin) to the rift in lockstep — no
-    //     frame-1 pop.
-    //   • Phase B (0.4-0.6): HOLD at the rift core while the warp corridor
-    //     punches through. Universe swap fires at t01 = 0.5 inside the
-    //     corridor's full-opacity plateau (see rift-corridor.tsx).
-    //   • Phase C (0.6-1.0): decelerating pull OUT to the new universe's
-    //     overhead system view. Gaze pans rift → origin.
+    //     frame-1 pop. (User says "perfect" — leave alone.)
+    //   • Phase B (0.40-0.55): HOLD at the rift core while the warp
+    //     corridor reaches full opacity. Universe swap fires at t01 = 0.5.
+    //   • Phase C (0.55-1.0): slow, lingering pull OUT to the new universe's
+    //     overhead system view. easeInOutCubic gives a smooth start (camera
+    //     lingers at the rift) and a smooth arrival overhead. The corridor's
+    //     long fade-out (0.54-0.85, see rift-corridor.tsx) crossfades into
+    //     the new universe's rift mesh as the camera retreats — the user
+    //     "emerges through the rift" instead of teleporting away from it.
     if (riftActive) {
       if (riftStart.current === null) {
         riftStart.current = state.clock.elapsedTime
@@ -91,13 +94,15 @@ function CameraController({
         camera.position.lerpVectors(riftStartPos.current!, nearRift, k)
         _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
         camera.lookAt(_lookAt)
-      } else if (t01 < 0.6) {
-        // Phase B — held at the rift core. Corridor takes over visually.
+      } else if (t01 < 0.55) {
+        // Phase B — held at the rift core during corridor full opacity.
         camera.position.copy(nearRift)
         camera.lookAt(RIFT_WORLD_POS)
       } else {
-        // Phase C — pull OUT (fast start, slow end) "exiting warp".
-        const k = easeOutCubic((t01 - 0.6) / 0.4)
+        // Phase C — slow, deliberate pull OUT. Camera lingers at the rift
+        // briefly (corridor still mostly opaque) then drifts smoothly to
+        // overhead as the corridor dissolves.
+        const k = easeInOutCubic((t01 - 0.55) / 0.45)
         camera.position.lerpVectors(nearRift, RIFT_OVERHEAD, k)
         _lookAt.lerpVectors(RIFT_WORLD_POS, ORIGIN, k)
         camera.lookAt(_lookAt)

@@ -7,10 +7,14 @@
 //
 // Choreography (driven by `active` + `duration`, default 4s):
 //   t01 in [0.00, 0.40]: invisible — camera dollying IN to the rift core
-//   t01 in [0.40, 0.46]: fade IN  (camera now held at rift)
+//   t01 in [0.40, 0.46]: fade IN (camera held at rift)
 //   t01 in [0.46, 0.54]: full opacity (universe swap fires at t01 = 0.5)
-//   t01 in [0.54, 0.60]: fade OUT
-//   t01 in [0.60, 1.00]: invisible — camera dollying OUT into new system
+//   t01 in [0.54, 0.85]: LONG fade OUT — crossfades with the camera's
+//                        Phase C pull-out (starts at 0.55) so the warp
+//                        tunnel dissolves into the new universe's rift
+//                        mesh as the camera retreats. User emerges
+//                        through the rift instead of teleporting away.
+//   t01 in [0.85, 1.00]: invisible — camera continues to overhead
 //
 // See `solar-portfolio.tsx` CameraController for the matching camera
 // choreography — they were designed together.
@@ -68,18 +72,24 @@ const FRAG = /* glsl */ `
       float bin = floor((a + 3.14159) * density / 6.28318);
       float seed = hash(bin * 17.31 + fi * 91.7);
 
-      // Phase: 0 = at center, 1 = past edge. Each star travels a full cycle.
-      float phase = fract(uTime * mix(0.55, 1.30, seed) + seed);
-      float starR = phase * 2.5;
+      // Phase: 0 = at center, 1 = past edge. Streaks cycle FAST so the
+      // screen never feels frozen even at peak opacity.
+      float phase = fract(uTime * mix(4.0, 7.0, seed) + seed);
+      // Travel past the screen corners (16:9 corner ≈ r=2.04) so streaks
+      // exit the frame instead of pinging back.
+      float starR = phase * 2.8;
 
-      // Streak: gaussian peak at the head with falloff.
-      float streakLen = 0.18 + fi * 0.04;
+      // Comet-shape streak: gaussian head + long exponential tail BEHIND.
+      // Faster speed + the tail combine into a clear hyperspace blur.
+      float streakLen = 0.24 + fi * 0.06;
       float dr = r - starR;
-      float streak = exp(-(dr * dr) / (streakLen * streakLen));
+      float head = exp(-(dr * dr) / (streakLen * streakLen));
+      float tail = (dr < 0.0) ? exp(dr / (streakLen * 3.0)) : 0.0;
+      float streak = head + tail * 0.6;
 
       // Soft fade at start of journey + fade as star leaves the screen.
-      streak *= smoothstep(0.0, 0.18, phase);
-      streak *= 1.0 - smoothstep(0.82, 1.00, phase);
+      streak *= smoothstep(0.0, 0.10, phase);
+      streak *= 1.0 - smoothstep(0.90, 1.00, phase);
 
       // Per-star color: soft blue ↔ magenta.
       float ct = hash(bin * 0.731 + fi);
@@ -89,20 +99,23 @@ const FRAG = /* glsl */ `
         ct
       );
 
-      col += c * streak * 0.85;
+      col += c * streak * 0.55;
     }
 
-    // Soft purple radial background — keeps the screen from going black where
-    // streaks don't cover.
+    // Soft purple radial background — fills the screen edges (and 16:9
+    // corners at r≈2.04) so nothing reads as black. Pulses slightly with
+    // uTime + a faint outward ripple so the field always reads alive
+    // even when individual streaks are off-axis.
     vec3 bg = mix(
-      vec3(0.04, 0.02, 0.14),
-      vec3(0.22, 0.08, 0.38),
-      smoothstep(0.0, 1.2, r)
+      vec3(0.07, 0.03, 0.18),
+      vec3(0.32, 0.12, 0.44),
+      smoothstep(0.0, 1.6, r)
     );
-    col += bg * 0.85;
-
-    // Subtle vignette so the corners read as "tunnel walls".
-    col *= 1.0 - smoothstep(0.7, 1.4, r);
+    float pulse = 0.85 + 0.18 * sin(uTime * 5.0);
+    float ripple = 0.5 + 0.5 * sin(r * 6.0 - uTime * 7.0);
+    bg *= pulse;
+    bg += vec3(0.05, 0.02, 0.08) * ripple * (1.0 - smoothstep(0.4, 1.6, r));
+    col += bg;
 
     // Mild gamma correction.
     col = pow(clamp(col, vec3(0.0), vec3(1.0)), vec3(1.05));
@@ -157,12 +170,13 @@ export default function RiftCorridor({
     }
 
     // Smooth opacity envelope — see the file header for the timeline.
-    // Corridor only kicks in once the camera is fully zoomed onto the rift
-    // (t01 = 0.4 in solar-portfolio.tsx CameraController).
+    // Long fade-out (0.54-0.85) overlaps with the camera's Phase C
+    // pull-out (starts at 0.55), so the warp tunnel slowly dissolves
+    // into the new universe's rift view instead of popping off.
     let opacity = 0
     if (t01 >= 0.40 && t01 < 0.46) opacity = (t01 - 0.40) / 0.06
     else if (t01 >= 0.46 && t01 <= 0.54) opacity = 1
-    else if (t01 > 0.54 && t01 <= 0.60) opacity = (0.60 - t01) / 0.06
+    else if (t01 > 0.54 && t01 <= 0.85) opacity = (0.85 - t01) / 0.31
     opacity = Math.max(0, Math.min(1, opacity))
 
     m.uniforms.uTime.value = state.clock.elapsedTime
