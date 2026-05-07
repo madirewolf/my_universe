@@ -17,6 +17,9 @@ interface CloudConfig {
   swirl: number
 }
 
+// First 6: original cluster on the -Z hemisphere. Last 3: scattered across
+// +Z and the side flanks so the user sees nebula coverage from any angle
+// after rotating the camera. ~50% more clouds total per universe.
 const PROF_CLOUDS: CloudConfig[] = [
   { color: "#5020a0", pos: [-110, 20, -130], rot: [0.3, 0.5, 0.0], size: 160, opacity: 0.55, swirl: 1.0 },
   { color: "#1855aa", pos: [120, -15, -100], rot: [-0.4, 0.8, 0.2], size: 150, opacity: 0.5, swirl: 0.8 },
@@ -24,6 +27,10 @@ const PROF_CLOUDS: CloudConfig[] = [
   { color: "#3070d8", pos: [80, 70, -120], rot: [0.1, -0.5, 0.4], size: 130, opacity: 0.4, swirl: 0.9 },
   { color: "#7020c8", pos: [-90, -30, -160], rot: [-0.2, 1.0, 0.0], size: 140, opacity: 0.55, swirl: 1.1 },
   { color: "#1090d8", pos: [60, -50, -140], rot: [0.5, -0.3, 0.7], size: 120, opacity: 0.4, swirl: 1.0 },
+  // ── Scatter set ─────────────────────────────────────────────────────────
+  { color: "#4060c0", pos: [-30, 50, 140], rot: [0.2, -1.4, 0.3], size: 140, opacity: 0.48, swirl: 0.95 },
+  { color: "#6020a8", pos: [80, -45, 130], rot: [-0.3, 1.6, -0.2], size: 130, opacity: 0.5, swirl: 1.1 },
+  { color: "#2080d0", pos: [-140, 10, 30], rot: [0.4, -0.9, 0.6], size: 125, opacity: 0.42, swirl: 1.0 },
 ]
 
 const PERS_CLOUDS: CloudConfig[] = [
@@ -33,6 +40,10 @@ const PERS_CLOUDS: CloudConfig[] = [
   { color: "#80f0ff", pos: [70, 60, -130], rot: [0.1, -0.5, 0.4], size: 130, opacity: 0.5, swirl: 0.9 },
   { color: "#ffb080", pos: [-90, -40, -160], rot: [-0.2, 1.0, 0.0], size: 140, opacity: 0.5, swirl: 1.1 },
   { color: "#c0ffe0", pos: [90, -60, -150], rot: [0.5, -0.3, 0.7], size: 120, opacity: 0.42, swirl: 1.2 },
+  // ── Scatter set ─────────────────────────────────────────────────────────
+  { color: "#ff6090", pos: [-40, 55, 130], rot: [0.2, -1.4, 0.3], size: 140, opacity: 0.55, swirl: 0.95 },
+  { color: "#ffa040", pos: [85, -35, 140], rot: [-0.3, 1.6, -0.2], size: 130, opacity: 0.5, swirl: 1.1 },
+  { color: "#d0ffe0", pos: [-145, 5, 35], rot: [0.4, -0.9, 0.6], size: 125, opacity: 0.45, swirl: 1.0 },
 ]
 
 const VERT = /* glsl */ `
