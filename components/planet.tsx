@@ -311,9 +311,43 @@ export default function Planet({
   if (!isDetailView) {
     // Outer group tilts the orbital plane; inner orbitRef sweeps around the tilted Y
     // axis with an initial `phase` so planets aren't all aligned at boot.
+    // The trail is a partial torus child of orbitRef — its leading edge always
+    // sits at the planet (local +X), trailing back along the orbit so as the
+    // group rotates, the arc rotates with it and reads as motion blur.
+    const trailLength = (Math.PI * 2) / 3 // 120° arc
+    const trailColor = accentColor || "#a0c0ff"
     return (
       <group rotation={[tilt, 0, 0]}>
         <group ref={orbitRef} rotation={[0, phase, 0]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={-50}>
+            <torusGeometry
+              args={[distance ?? 0, 0.045, 6, 96, -trailLength, trailLength]}
+            />
+            <shaderMaterial
+              transparent
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+              uniforms={{ uColor: { value: new THREE.Color(trailColor) } }}
+              vertexShader={`
+                varying vec2 vUv;
+                void main() {
+                  vUv = uv;
+                  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+              `}
+              fragmentShader={`
+                varying vec2 vUv;
+                uniform vec3 uColor;
+                void main() {
+                  // vUv.x: 0 = far end, 1 = leading edge (planet).
+                  // Quadratic falloff so the trail gathers brightness near the planet.
+                  float t = vUv.x;
+                  float fade = t * t;
+                  gl_FragColor = vec4(uColor * (0.5 + 0.7 * fade), fade * 0.45);
+                }
+              `}
+            />
+          </mesh>
           {planetMesh}
         </group>
       </group>
