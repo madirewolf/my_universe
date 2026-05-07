@@ -319,10 +319,16 @@ export default function Planet({
     return (
       <group rotation={[tilt, 0, 0]}>
         <group ref={orbitRef} rotation={[0, phase, 0]}>
+          {/*
+            Partial torus: arc covers theta 0 → trailLength. With the +π/2
+            rotation around X, the torus sits in the XZ plane and theta=0
+            lands at +X (the planet's local position), with the arc
+            sweeping toward +Z. Since orbitRef advances .rotation.y in
+            the +Y direction (which sends +X → -Z), +Z is the past — so
+            the arc reads as a trail behind the planet's motion.
+          */}
           <mesh rotation={[Math.PI / 2, 0, 0]} renderOrder={-50}>
-            <torusGeometry
-              args={[distance ?? 0, 0.045, 6, 96, -trailLength, trailLength]}
-            />
+            <torusGeometry args={[distance ?? 0, 0.045, 6, 96, trailLength]} />
             <shaderMaterial
               transparent
               depthWrite={false}
@@ -339,11 +345,11 @@ export default function Planet({
                 varying vec2 vUv;
                 uniform vec3 uColor;
                 void main() {
-                  // vUv.x: 0 = far end, 1 = leading edge (planet).
-                  // Quadratic falloff so the trail gathers brightness near the planet.
-                  float t = vUv.x;
+                  // vUv.x: 0 = leading edge (planet), 1 = far/trailing end.
+                  // Bright at the planet, fades into space as the trail extends back.
+                  float t = 1.0 - vUv.x;
                   float fade = t * t;
-                  gl_FragColor = vec4(uColor * (0.5 + 0.7 * fade), fade * 0.45);
+                  gl_FragColor = vec4(uColor * (0.5 + 0.7 * fade), fade * 0.5);
                 }
               `}
             />
