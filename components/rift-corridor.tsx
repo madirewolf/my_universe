@@ -1,13 +1,19 @@
 "use client"
 
-// Generators Redux by Kali — adapted from https://www.shadertoy.com/view/Xtf3Rn
-// License: MIT.
+// Lightspeed warp corridor — fullscreen overlay used during the rift transition
+// between universes. Replaces the previous Kali-fractal shader with a cleaner
+// hyperspace-jump effect that's cheap to render (no raymarching, just
+// analytical math over 3 angular layers of pseudo-random stars).
 //
-// Used as a fullscreen transition when the user clicks the rift portal — the
-// camera "flies through" the Kali fractal corridor for ~2.8 seconds before
-// emerging in the other universe. Iterations + raymarch steps reduced from
-// the original (17/70) to (12/40) to keep frame budget tight; the metallic
-// liquid ball and post-process layers from the original are dropped.
+// Choreography (driven by `active` + `duration`, default 4s):
+//   t01 in [0.00, 0.20]: invisible — camera flying into the rift
+//   t01 in [0.20, 0.45]: fade IN (smooth, ~1s window)
+//   t01 in [0.45, 0.55]: full opacity (universe swap fires at t01 = 0.5)
+//   t01 in [0.55, 0.80]: fade OUT (smooth, ~1s window)
+//   t01 in [0.80, 1.00]: invisible — camera flying out into new system
+//
+// See `solar-portfolio.tsx` CameraController for the matching camera
+// choreography — they were designed together.
 
 import { useEffect, useRef, useState } from "react"
 import { useFrame, useThree } from "@react-three/fiber"
@@ -16,7 +22,7 @@ import type { ShaderMaterial } from "three"
 
 interface RiftCorridorProps {
   active: boolean
-  /** Total transition length in seconds (camera-in + corridor + camera-out). */
+  /** Total transition length (camera + corridor) in seconds. */
   duration?: number
   onMidpoint?: () => void
   onComplete?: () => void
@@ -26,7 +32,7 @@ const VERT = /* glsl */ `
   varying vec2 vUv;
   void main() {
     vUv = uv;
-    // Lock the quad at the far plane in NDC, irrespective of mesh transform
+    // Lock the quad to the far plane in NDC, regardless of mesh transform.
     gl_Position = vec4(position.xy, 1.0, 1.0);
   }
 `
@@ -37,105 +43,69 @@ const FRAG = /* glsl */ `
   uniform vec2  uResolution;
   varying vec2 vUv;
 
-  #define iterations 11
-  #define volsteps 22
-  #define zoom    0.85
-  #define speed   0.5
-  #define distfading 0.78
-  #define saturation 0.95
-
-  vec3 path(float ti) {
-    return vec3(sin(ti), 0.30 - sin(ti * 0.632) * 0.30, cos(ti * 0.5)) * 0.5;
-  }
-
-  vec2 de(vec3 pos) {
-    vec3 tpos = pos;
-    tpos.xz = abs(0.5 - mod(tpos.xz, 1.0));
-    vec4 p = vec4(tpos, 1.0);
-    for (int i = 0; i < iterations; i++) {
-      p.xyz = abs(p.xyz) - vec3(-0.02, 1.98, -0.02);
-      p = p * 2.0 / clamp(dot(p.xyz, p.xyz), 0.4, 1.0) - vec4(0.5, 1.0, 0.4, 0.0);
-      p.xz *= mat2(-0.416, -0.91, 0.91, -0.416);
-    }
-    float fl = pos.y - 3.013;
-    float fr = (length(max(abs(p.xyz) - vec3(0.1, 5.0, 0.1), vec3(0.0))) - 0.05) / p.w;
-    float d = min(fl, fr);
-    d = min(d, -pos.y + 3.95);
-    return vec2(d, 0.0);
+  // Cheap pseudo-random hash. Plenty unique for our scattered seeds.
+  float hash(float n) {
+    return fract(sin(n) * 43758.5453);
   }
 
   void main() {
+    // Centered, aspect-corrected coords (-1..1 vertically).
     vec2 uv = vUv * 2.0 - 1.0;
-    uv.y *= uResolution.y / max(uResolution.x, 1.0);
+    uv.x *= uResolution.x / max(uResolution.y, 1.0);
 
-    float ti = uTime * speed + 0.25;
-    vec3 origin = vec3(0.0, 3.11, 0.0);
-    vec3 from = origin + path(ti);
-    vec3 advec = normalize(path(ti + 0.7) - path(ti));
-    float an = atan(advec.x, advec.z);
-    mat2 r1 = mat2(cos(an), sin(an), -sin(an), cos(an));
-    an = advec.y * 1.7;
-    mat2 r2 = mat2(cos(an), sin(an), -sin(an), cos(an));
+    float r = length(uv);
+    float a = atan(uv.y, uv.x);
 
-    vec3 dir = normalize(vec3(uv * zoom, 1.0));
-    dir.yz *= r2;
-    dir.xz *= r1;
-
-    // Background gradient — purple→magenta vignette so the corridor never
-    // reads as a black void even when raymarch doesn't accumulate energy.
-    vec3 backg = mix(
-      vec3(0.18, 0.08, 0.30),
-      vec3(0.95, 0.45, 0.92),
-      smoothstep(-1.0, 1.0, uv.y * 0.6 + 0.4)
-    );
-
-    // Volumetric raymarch — accumulate energy at every step (not only on
-    // surface hits) so the fractal glows even when the path doesn't graze
-    // a wall directly.
-    float s = 0.0;
-    float fade = 1.0;
-    float glow = 0.0;
     vec3 col = vec3(0.0);
-    vec2 d = vec2(1.0, 0.0);
 
-    for (int r = 0; r < volsteps; r++) {
-      if (d.x > 0.001 && s < 4.0) {
-        vec3 p = from + s * dir;
-        d = de(p);
+    // Three layers of star streaks at different angular densities. Keeps the
+    // field from marching in lockstep — feels like a richer warp.
+    for (int i = 0; i < 3; i++) {
+      float fi = float(i);
+      float density = 36.0 + fi * 28.0;
 
-        if (d.x < 0.04) {
-          glow += max(0.0, 0.04 - d.x) * exp(-s * 0.55) * 1.4;
-        }
+      // Discretize angle into bins, one star per bin per layer.
+      float bin = floor((a + 3.14159) * density / 6.28318);
+      float seed = hash(bin * 17.31 + fi * 91.7);
 
-        // Pulsing energy color along the camera path
-        vec3 energyCol = vec3(1.0, 0.55, 0.95)
-          * (1.6 + sin(uTime * 9.0 + p.z * 5.0 + p.x * 3.5)) * 0.22;
-        // Inverse-distance weighting so close-to-walls is brighter
-        float energy = 1.0 / (1.0 + d.x * d.x * 8.0);
-        col += energyCol * energy * fade * 0.10;
+      // Phase: 0 = at center, 1 = past edge. Each star travels a full cycle.
+      float phase = fract(uTime * mix(0.55, 1.30, seed) + seed);
+      float starR = phase * 2.5;
 
-        s += max(d.x, 0.05);
-        fade *= distfading;
-      }
+      // Streak: gaussian peak at the head with falloff.
+      float streakLen = 0.18 + fi * 0.04;
+      float dr = r - starR;
+      float streak = exp(-(dr * dr) / (streakLen * streakLen));
+
+      // Soft fade at start of journey + fade as star leaves the screen.
+      streak *= smoothstep(0.0, 0.18, phase);
+      streak *= 1.0 - smoothstep(0.82, 1.00, phase);
+
+      // Per-star color: soft blue ↔ magenta.
+      float ct = hash(bin * 0.731 + fi);
+      vec3 c = mix(
+        vec3(0.70, 0.78, 1.10),
+        vec3(1.05, 0.55, 1.00),
+        ct
+      );
+
+      col += c * streak * 0.85;
     }
 
-    // Surface hit: bright violet flash that fades with distance
-    if (d.x <= 0.001) {
-      col += vec3(0.85, 0.45, 1.0) * exp(-0.35 * s * s) * 0.6;
-      col = mix(col, backg * 0.55, 1.0 - exp(-0.65 * pow(s, 1.5)));
-    } else {
-      col = mix(col, backg * 0.65, 0.65);
-    }
+    // Soft purple radial background — keeps the screen from going black where
+    // streaks don't cover.
+    vec3 bg = mix(
+      vec3(0.04, 0.02, 0.14),
+      vec3(0.22, 0.08, 0.38),
+      smoothstep(0.0, 1.2, r)
+    );
+    col += bg * 0.85;
 
-    col += glow * vec3(1.05, 0.55, 1.20) * 0.95;
+    // Subtle vignette so the corners read as "tunnel walls".
+    col *= 1.0 - smoothstep(0.7, 1.4, r);
 
-    // Tunnel vignette
-    float r2v = dot(uv, uv);
-    col *= 1.0 - clamp(r2v * 0.42, 0.0, 1.0);
-
-    // Saturation + gamma
-    col = mix(vec3(length(col)), col, saturation);
-    col = pow(clamp(col, vec3(0.0), vec3(1.0)), vec3(1.15));
+    // Mild gamma correction.
+    col = pow(clamp(col, vec3(0.0), vec3(1.0)), vec3(1.05));
 
     gl_FragColor = vec4(col, uOpacity);
   }
@@ -152,11 +122,11 @@ export default function RiftCorridor({
   const midpointFiredRef = useRef(false)
   const completeFiredRef = useRef(false)
   const { size } = useThree()
-  // Internal phase to keep the mesh mounted during the fade-out ramp even
-  // after `active` has flipped back to false.
+  // Internal mount flag — keeps the mesh alive through the fade-out window
+  // even after `active` flips back to false.
   const [render, setRender] = useState(false)
 
-  // Reset state when the trigger goes high
+  // Reset timing whenever the rift activates.
   useEffect(() => {
     if (active) {
       startRef.current = null
@@ -168,16 +138,14 @@ export default function RiftCorridor({
 
   useFrame((state) => {
     const m = matRef.current
-    if (!m) return
-    if (!render && !active) return
+    if (!m || !render) return
 
     if (startRef.current === null) {
       startRef.current = state.clock.elapsedTime
     }
-    const t = state.clock.elapsedTime - startRef.current
-    const t01 = Math.min(1, t / duration)
+    const t01 = Math.min(1, (state.clock.elapsedTime - startRef.current) / duration)
 
-    // Midpoint and end callbacks
+    // Midpoint = swap universes. End = release the transition.
     if (!midpointFiredRef.current && t01 >= 0.5) {
       midpointFiredRef.current = true
       onMidpoint?.()
@@ -188,13 +156,11 @@ export default function RiftCorridor({
       setRender(false)
     }
 
-    // Corridor is invisible until the camera has flown into the rift; then
-    // fades in (40-45%), holds full (45-55%, universe swap fires at 50%),
-    // fades out (55-60%), and stays hidden while the camera flies away.
+    // Smooth opacity envelope — see the file header for the timeline.
     let opacity = 0
-    if (t01 >= 0.4 && t01 < 0.45) opacity = (t01 - 0.4) / 0.05
+    if (t01 >= 0.20 && t01 < 0.45) opacity = (t01 - 0.20) / 0.25
     else if (t01 >= 0.45 && t01 <= 0.55) opacity = 1
-    else if (t01 > 0.55 && t01 <= 0.6) opacity = (0.6 - t01) / 0.05
+    else if (t01 > 0.55 && t01 <= 0.80) opacity = (0.80 - t01) / 0.25
     opacity = Math.max(0, Math.min(1, opacity))
 
     m.uniforms.uTime.value = state.clock.elapsedTime

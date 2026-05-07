@@ -20,15 +20,21 @@ import UIOverlay from "./ui-overlay"
 type Mode = "system" | "planet" | "moon"
 
 // Easing helpers for the rift cinematic.
+//   easeInCubic  → accelerating dolly-IN (slow start, fast end → "spooling up")
+//   easeOutCubic → decelerating pull-OUT (fast start, slow end → "exiting warp")
+function easeInCubic(t: number): number {
+  return t * t * t
+}
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3)
-}
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
 const RIFT_WORLD_POS = new THREE.Vector3(0, 16, -75)
 const RIFT_OVERHEAD = new THREE.Vector3(0, 52, 0)
+// How close the camera gets to the rift core at the midpoint of the cinematic.
+// Aggressive on purpose — the corridor's full-opacity plateau hides any
+// micro-clipping into the rift mesh while we're this close.
+const RIFT_NEAR_DIST = 0.8
 
 function CameraController({
   mode,
@@ -50,6 +56,12 @@ function CameraController({
 
   useFrame((state) => {
     // ── Rift cinematic takes priority ─────────────────────────────────────
+    // Two-phase camera choreography:
+    //   • t01 in [0.0, 0.5]: accelerating dolly toward the rift core
+    //   • t01 in [0.5, 1.0]: decelerating pull-out to the new universe's
+    //                          overhead system view
+    // The corridor's full-opacity plateau (0.45-0.55, see rift-corridor.tsx)
+    // hides the lookAt swap and universe switch that fire at t01 = 0.5.
     if (riftActive) {
       if (riftStart.current === null) {
         riftStart.current = state.clock.elapsedTime
@@ -60,31 +72,23 @@ function CameraController({
         (state.clock.elapsedTime - riftStart.current) / riftDuration,
       )
 
-      // Rift dir = unit vector from origin to rift in world space
+      // Position RIFT_NEAR_DIST units in front of the rift core, on the line
+      // from the world origin to the rift.
       const riftDir = RIFT_WORLD_POS.clone().normalize()
-      // Camera "near rift" position — 2.5 units in front of the rift, looking
-      // straight at it. As the camera approaches, the rift fills the view and
-      // the corridor overlay fades in to take over.
-      const nearRift = RIFT_WORLD_POS.clone().sub(riftDir.multiplyScalar(2.5))
+      const nearRift = RIFT_WORLD_POS.clone().sub(
+        riftDir.multiplyScalar(RIFT_NEAR_DIST),
+      )
 
-      if (t01 < 0.4) {
-        // Phase A: ease IN toward the rift
-        const phaseT = easeOutCubic(t01 / 0.4)
-        camera.position.lerpVectors(riftStartPos.current!, nearRift, phaseT)
+      if (t01 < 0.5) {
+        // Accelerating dolly-IN (slow start, fast end) → "spooling up to warp".
+        const k = easeInCubic(t01 * 2)
+        camera.position.lerpVectors(riftStartPos.current!, nearRift, k)
         camera.lookAt(RIFT_WORLD_POS)
-      } else if (t01 < 0.6) {
-        // Phase B: hold close to the rift while the corridor overlay covers
-        // the screen. Universe swap fires inside this window via the
-        // RiftCorridor onMidpoint callback.
-        camera.position.copy(nearRift)
-        camera.lookAt(RIFT_WORLD_POS)
-      } else if (t01 < 1) {
-        // Phase C: pull OUT to the new universe's overhead system view
-        const phaseT = easeInOutCubic((t01 - 0.6) / 0.4)
-        camera.position.lerpVectors(nearRift, RIFT_OVERHEAD, phaseT)
-        camera.lookAt(0, 0, 0)
       } else {
-        camera.position.copy(RIFT_OVERHEAD)
+        // Decelerating pull-OUT (fast start, slow end) → "exiting warp" into
+        // the new universe.
+        const k = easeOutCubic((t01 - 0.5) * 2)
+        camera.position.lerpVectors(nearRift, RIFT_OVERHEAD, k)
         camera.lookAt(0, 0, 0)
       }
       return
