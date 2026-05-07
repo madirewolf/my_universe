@@ -28,6 +28,23 @@ interface UIOverlayProps {
 const NOISE_DATA_URI =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>"
 
+// Tileable noise pattern used as a mask alpha layer. Where the noise is dark,
+// the mask is transparent → that part of the panel evaporates. Combined with
+// the radial-fade mask layer, this produces the "thanos snap" dissolve at the
+// panel's edges.
+const DUST_MASK = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.4' numOctaves='2' seed='5'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.7 0'/></filter><rect width='100%' height='100%' fill='white' filter='url(#n)'/></svg>`,
+)}`
+
+// Multi-layer mask: smooth radial fade + tiled dust pattern. mask-composite:
+// intersect (browser default for multi-layer is source-over, so we explicitly
+// set intersect) clips the panel to "where BOTH masks are opaque" — opaque in
+// the centre, particle-pixelated at the rim.
+const DISSOLVE_MASK_IMAGE = `radial-gradient(ellipse 105% 105% at 50% 50%, black 70%, rgba(0,0,0,0.55) 85%, transparent 100%), url("${DUST_MASK}")`
+const DISSOLVE_MASK_SIZE = "100% 100%, 80px 80px"
+const DISSOLVE_MASK_REPEAT = "no-repeat, repeat"
+const DISSOLVE_MASK_COMPOSITE = "intersect"
+
 const GLASS_TONES = {
   default: { bg: "rgba(4, 6, 20, 0.58)", blur: 18 },
   strong: { bg: "rgba(4, 6, 20, 0.75)", blur: 20 },
@@ -75,6 +92,16 @@ function GlassPanel({
         WebkitBackdropFilter: `blur(${blur}px)`,
         border: `1px solid ${border}`,
         boxShadow: shadow,
+        // "Thanos snap" dissolve at the panel rim. Multi-layer mask: smooth
+        // radial fade × tiled noise. Modern browsers only.
+        maskImage: DISSOLVE_MASK_IMAGE,
+        WebkitMaskImage: DISSOLVE_MASK_IMAGE,
+        maskSize: DISSOLVE_MASK_SIZE,
+        WebkitMaskSize: DISSOLVE_MASK_SIZE,
+        maskRepeat: DISSOLVE_MASK_REPEAT,
+        WebkitMaskRepeat: DISSOLVE_MASK_REPEAT,
+        maskComposite: DISSOLVE_MASK_COMPOSITE,
+        WebkitMaskComposite: "source-in",
       }}
     >
       {/* Scanlines — subtle CRT vibe, faded toward the panel edges */}

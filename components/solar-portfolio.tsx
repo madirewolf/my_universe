@@ -192,6 +192,7 @@ export default function SolarPortfolio() {
               type={selected.type}
               accentColor={selected.color}
               bump={selected.bump}
+              shape={selected.shape}
               seed={(selectedPlanet ?? 0) * 17.31}
               landmarks={selected.landmarks}
               lonOffset={planetRotation.lon}

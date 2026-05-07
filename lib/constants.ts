@@ -20,6 +20,15 @@ export interface Landmark {
   color: string
 }
 
+/** Geometric shape of a planet's body. Defaults to "sphere". */
+export type PlanetShape =
+  | "sphere"
+  | "cube"
+  | "icosahedron"
+  | "torus"
+  | "torusKnot"
+  | "dodecahedron"
+
 // PlanetEntry bundles everything about a planet — orbital params, presentation, content.
 export interface PlanetEntry {
   type: string // shader key (see lib/shaders.tsx)
@@ -30,8 +39,10 @@ export interface PlanetEntry {
   phase?: number
   /** Orbital plane inclination in radians; gives the system depth. */
   tilt?: number
-  /** Vertex displacement amount (0–0.2). Adds noise-driven mountain relief to spheres; ignored for cubes. */
+  /** Vertex displacement amount (0–0.2). Adds noise-driven mountain relief to spheres / icos / dodecs. */
   bump?: number
+  /** Body shape. Defaults to "sphere". */
+  shape?: PlanetShape
   name: string
   description: string
   color: string
@@ -155,6 +166,7 @@ const PROFESSIONAL: UniverseConfig = {
       phase: 3.5,
       tilt: 0.12,
       bump: 0.03,
+      shape: "torusKnot",
       name: "Artificial Intelligence & Controls Planet",
       description: "Machine Learning, AI & Control Systems",
       color: "#4080ff",
@@ -188,6 +200,7 @@ const PROFESSIONAL: UniverseConfig = {
       phase: 5.0,
       tilt: -0.04,
       bump: 0,
+      shape: "cube",
       name: "Software & Systems Engineering Planet",
       description: "Software Architecture & Systems Design",
       color: "#ff8000",
@@ -378,6 +391,7 @@ const PERSONAL: UniverseConfig = {
       phase: 4.0,
       tilt: -0.07,
       bump: 0.07,
+      shape: "icosahedron",
       name: "Philosophy",
       description: "Frameworks, questions, and thinkers I'm working with.",
       color: "#a070ff",
@@ -474,6 +488,7 @@ const PERSONAL: UniverseConfig = {
       phase: 2.5,
       tilt: 0.20,
       bump: 0.12,
+      shape: "dodecahedron",
       name: "Nyx",
       description: "My cat. The most important member of the household.",
       color: "#909090",
@@ -505,6 +520,7 @@ const PERSONAL: UniverseConfig = {
       phase: 5.8,
       tilt: -0.12,
       bump: 0.04,
+      shape: "torus",
       name: "Films & Shows",
       description: "Stories that stuck. Watch diary lives on Letterboxd.",
       color: "#ffaa55",

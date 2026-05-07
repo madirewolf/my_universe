@@ -6,7 +6,7 @@ import { Html } from "@react-three/drei"
 import * as THREE from "three"
 import type { Group, Mesh } from "three"
 import { getPlanetMaterial } from "@/lib/shaders"
-import type { Landmark } from "@/lib/constants"
+import type { Landmark, PlanetShape } from "@/lib/constants"
 
 interface PlanetProps {
   // Orbit mode props
@@ -19,6 +19,7 @@ interface PlanetProps {
   tilt?: number
   bump?: number
   seed?: number
+  shape?: PlanetShape
   paused?: boolean
   onClick?: () => void
   onHover?: (hovered: boolean) => void
@@ -118,6 +119,37 @@ function makeDisplacedSphere(radius: number, segments: number, bump: number, see
   return displaceRadial(g, radius, bump, seed)
 }
 
+/** Build whichever geometry a planet's `shape` field calls for. */
+function makePlanetGeometry(
+  shape: PlanetShape,
+  size: number,
+  segments: number,
+  bump: number,
+  seed: number,
+): THREE.BufferGeometry {
+  switch (shape) {
+    case "cube":
+      return new THREE.BoxGeometry(size * 1.55, size * 1.55, size * 1.55)
+    case "torus":
+      // Donut: tube ratio 0.32× makes a chunky "reel" vibe rather than a thin ring
+      return new THREE.TorusGeometry(size * 0.85, size * 0.32, 18, 96)
+    case "torusKnot":
+      // Twisted knot — feels intricate and computational; great for AI/Controls
+      return new THREE.TorusKnotGeometry(size * 0.7, size * 0.22, 160, 24, 2, 3)
+    case "icosahedron": {
+      const g = new THREE.IcosahedronGeometry(size, 2)
+      return bump > 0 ? displaceRadial(g, size, bump, seed) : g
+    }
+    case "dodecahedron": {
+      const g = new THREE.DodecahedronGeometry(size, 1)
+      return bump > 0 ? displaceRadial(g, size, bump, seed) : g
+    }
+    case "sphere":
+    default:
+      return makeDisplacedSphere(size, segments, bump, seed)
+  }
+}
+
 // Crystalline moon — low-poly icosahedron with strong vertex displacement.
 // Pairs with `flatShading: true` on the material so each face reads as a sharp facet.
 function makeCrystalMoon(radius: number, seed: number) {
@@ -135,6 +167,7 @@ export default function Planet({
   tilt = 0,
   bump = 0,
   seed = 0,
+  shape: shapeProp,
   paused = false,
   onClick,
   onHover,
@@ -144,6 +177,9 @@ export default function Planet({
   onLandmarkClick,
   landmarks: landmarksProp,
 }: PlanetProps) {
+  // Backward compat: software-systems used to be implicitly cube-shaped via type
+  const shape: PlanetShape =
+    shapeProp ?? (type === "software-systems" ? "cube" : "sphere")
   const orbitRef = useRef<Group>(null)
   const planetGroupRef = useRef<Group>(null)
   const planetRef = useRef<Mesh>(null)
@@ -154,20 +190,16 @@ export default function Planet({
   const landmarks = landmarksProp ?? []
   const orbits = useMemo(() => landmarks.map((_, i) => moonOrbit(i)), [landmarks.length])
 
-  // Software-systems uses a cube; everything else gets a (possibly displaced) sphere.
-  const isCube = type === "software-systems"
-
-  // Sphere radius differs between detail (4) and orbit (size) modes — bake displacement
-  // for whichever is currently rendered.
-  const sphereRadius = isDetailView ? 4 : size
+  // Body radius scales between orbit (size) and detail (4) modes.
+  const bodyRadius = isDetailView ? 4 : size
   const sphereSegments = isDetailView ? 96 : 64
 
-  const displacedGeom = useMemo(() => {
-    if (isCube) return null
-    return makeDisplacedSphere(sphereRadius, sphereSegments, bump, seed)
-  }, [isCube, sphereRadius, sphereSegments, bump, seed])
+  const planetGeom = useMemo(
+    () => makePlanetGeometry(shape, bodyRadius, sphereSegments, bump, seed),
+    [shape, bodyRadius, sphereSegments, bump, seed],
+  )
 
-  useEffect(() => () => displacedGeom?.dispose(), [displacedGeom])
+  useEffect(() => () => planetGeom.dispose(), [planetGeom])
 
   // Memoize the shaderMaterial JSX so its `uniforms` object reference stays
   // stable across re-renders. Without this, r3f sees a new prop reference each
@@ -253,6 +285,7 @@ export default function Planet({
   const planetMesh = (
     <mesh
       ref={planetRef}
+      geometry={planetGeom}
       position={isDetailView ? [0, 0, 0] : [distance || 0, 0, 0]}
       onClick={onClick}
       onPointerOver={(e) => {
@@ -270,9 +303,7 @@ export default function Planet({
       }}
       castShadow
       receiveShadow
-      {...(displacedGeom ? { geometry: displacedGeom } : {})}
     >
-      {isCube && <boxGeometry args={[size * 1.55, size * 1.55, size * 1.55]} />}
       {planetMaterialJsx}
     </mesh>
   )

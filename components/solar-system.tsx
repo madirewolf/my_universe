@@ -46,6 +46,7 @@ export default function SolarSystem({
           phase={planet.phase}
           tilt={planet.tilt}
           bump={planet.bump}
+          shape={planet.shape}
           seed={index * 17.31}
           paused={paused}
           onClick={() => onPlanetClick(index)}
