@@ -153,11 +153,17 @@ export default function SolarPortfolio() {
       >
         <Suspense fallback={null}>
           <StarNest
-            // Personal universe gets a quieter, more pastel pass so the fractal
-            // doesn't fight the bright pink/violet background.
+            // Personal universe stays soft pastel so the fractal doesn't fight
+            // the bright pink/violet background. Public universe is pushed
+            // toward light purple — knocks the natural warm/orange highlights
+            // of the fractal toward lavender so the whole rim glow reads cool.
             brightness={config.backgroundVariant === "bright" ? 0.0009 : 0.0014}
             saturation={config.backgroundVariant === "bright" ? 0.55 : 0.85}
-            tint={config.backgroundVariant === "bright" ? [1.05, 1.0, 1.05] : [0.9, 0.95, 1.1]}
+            tint={
+              config.backgroundVariant === "bright"
+                ? [1.05, 1.0, 1.05]
+                : [1.05, 0.78, 1.55]
+            }
           />
           <StarField />
           <Nebula variant={config.backgroundVariant} />
