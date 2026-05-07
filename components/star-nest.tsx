@@ -60,12 +60,12 @@ const FRAG = /* glsl */ `
     dir.xz *= rot1;
     dir.xy *= rot2;
 
-    // Bounded Lissajous drift instead of the original's linear `time * 2`
-    // drift. The original pulled the camera through the fractal volume, so
-    // after a couple minutes you'd end up in a cosmic-void region where
-    // almost nothing rendered (intermittent "stops animating"). This keeps
-    // the camera oscillating inside a single high-density pocket forever
-    // while still giving continuous slow motion.
+    // Bounded Lissajous drift instead of the original linear time*2 drift.
+    // The original pulled the camera through the fractal volume, so after
+    // a couple minutes you'd end up in a cosmic-void region where almost
+    // nothing rendered (the intermittent "stops animating" the user saw).
+    // This keeps the camera oscillating inside a single high-density
+    // pocket forever while still giving continuous slow motion.
     vec3 from = vec3(1.0, 0.5, 0.5);
     from += vec3(
       sin(uTime * 0.07) * 0.35,
