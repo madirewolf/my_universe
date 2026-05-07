@@ -71,7 +71,6 @@ const SUN_VARIANTS: Record<SunVariant, {
 }
 
 const SUN_RADIUS = 2.0
-const NUM_PROMINENCES = 6
 const NUM_WIND_PARTICLES = 220
 
 export default function Sun({
@@ -86,7 +85,6 @@ export default function Sun({
   const coronaMatRef = useRef<THREE.ShaderMaterial>(null)
   const glowRef = useRef<Mesh>(null)
   const chromosphereRef = useRef<Mesh>(null)
-  const prominencesRef = useRef<THREE.Group>(null)
   const v = SUN_VARIANTS[variant]
 
   // ── GLSL ─────────────────────────────────────────────────────────────
@@ -224,61 +222,6 @@ export default function Sun({
     }
   `
 
-  // ── Prominences (curved bezier tubes) ─────────────────────────────────
-  // Each is a CatmullRomCurve3 with foot-1, near-peak-1, peak, near-peak-2,
-  // foot-2 control points. The two foot points sit on the sun's surface;
-  // the peak rises ~1-2 units above. Looks like a magnetic field loop.
-  const prominences = useMemo(() => {
-    return Array.from({ length: NUM_PROMINENCES }).map((_, i) => {
-      const phi = Math.acos(1 - (2 * (i + 0.5)) / NUM_PROMINENCES)
-      const theta = Math.PI * (1 + Math.sqrt(5)) * i + 0.42
-      const midDir = new THREE.Vector3(
-        Math.cos(theta) * Math.sin(phi),
-        Math.cos(phi),
-        Math.sin(theta) * Math.sin(phi),
-      )
-
-      // Tangent perpendicular to midDir, used to offset the two foot points.
-      let tangent = new THREE.Vector3()
-        .crossVectors(midDir, new THREE.Vector3(0, 1, 0))
-      if (tangent.lengthSq() < 0.01) tangent.set(1, 0, 0)
-      tangent.normalize()
-
-      const sep = 0.55 + ((i * 0.31) % 0.4)             // foot separation
-      const arcHeight = 1.0 + ((i * 0.71) % 0.9)        // peak height above surface
-
-      const foot1 = midDir
-        .clone()
-        .add(tangent.clone().multiplyScalar(sep))
-        .normalize()
-        .multiplyScalar(SUN_RADIUS)
-      const foot2 = midDir
-        .clone()
-        .sub(tangent.clone().multiplyScalar(sep))
-        .normalize()
-        .multiplyScalar(SUN_RADIUS)
-      const peak = midDir.clone().multiplyScalar(SUN_RADIUS + arcHeight)
-
-      // Intermediate points lift the curve away from the chord so the loop
-      // arcs up rather than sagging.
-      const lift1 = foot1.clone().lerp(peak, 0.45)
-      const lift2 = foot2.clone().lerp(peak, 0.45)
-
-      const curve = new THREE.CatmullRomCurve3(
-        [foot1, lift1, peak, lift2, foot2],
-        false,
-        "catmullrom",
-        0.5,
-      )
-
-      return {
-        curve,
-        tubeRadius: 0.045 + ((i * 0.27) % 0.04),
-        pulsePhase: (i / NUM_PROMINENCES) * Math.PI * 2,
-      }
-    })
-  }, [])
-
   // ── Solar wind particles ──────────────────────────────────────────────
   // Each particle has a fixed direction and speed; its age cycles 0→1 as
   // it travels from the surface outward. Position + per-vertex color
@@ -314,9 +257,6 @@ export default function Sun({
   const windGeomRef = useRef<THREE.BufferGeometry>(null)
   const windColor = useMemo(() => new THREE.Color(v.windCol), [v.windCol])
 
-  // ── effectiveTime accumulator (pause-aware) ──────────────────────────
-  const effectiveTime = useRef(0)
-  const prevWall = useRef<number | null>(null)
   // Separate wall-time tracker for the wind delta (wind doesn't tick when
   // paused, but it also shouldn't drift on resume — we want the *increment*
   // since the last frame, not since the cinematic started).
@@ -331,11 +271,6 @@ export default function Sun({
 
   useFrame((state) => {
     const wall = state.clock.getElapsedTime()
-    if (prevWall.current !== null && !paused) {
-      effectiveTime.current += wall - prevWall.current
-    }
-    prevWall.current = wall
-    const et = effectiveTime.current
 
     // Surface boil + corona stay on wall time so the sun never freezes.
     if (sunMatRef.current) sunMatRef.current.uniforms.uTime.value = wall
@@ -353,24 +288,6 @@ export default function Sun({
       const flicker =
         1 + Math.sin(wall * 4.2) * 0.012 + Math.sin(wall * 7.7) * 0.008
       chromosphereRef.current.scale.setScalar(flicker)
-    }
-
-    // Prominences: gross group rotation on et (frozen during pause); per-loop
-    // pulse drives material opacity (not scale, so the loops stay grounded).
-    if (prominencesRef.current) {
-      prominencesRef.current.rotation.y = et * 0.04
-      prominencesRef.current.children.forEach((child, i) => {
-        const phase = prominences[i]?.pulsePhase ?? 0
-        const pulse = 0.55 + Math.sin(wall * 1.1 + phase) * 0.30
-        const mesh = child as THREE.Mesh
-        // Each child group has a primary tube + an outer halo tube.
-        if (mesh.children) {
-          mesh.children.forEach((sub, j) => {
-            const subMat = (sub as THREE.Mesh).material as THREE.MeshBasicMaterial
-            if (subMat) subMat.opacity = j === 0 ? pulse : pulse * 0.35
-          })
-        }
-      })
     }
 
     // Solar wind: advance particle ages, write positions + colors.
@@ -472,36 +389,8 @@ export default function Sun({
         />
       </mesh>
 
-      {/* Prominences — curved magnetic field loops, foot→peak→foot. Each
-          group has a tight primary tube and a fatter, dimmer halo tube. */}
-      <group ref={prominencesRef}>
-        {prominences.map((p, i) => (
-          <group key={i}>
-            <mesh>
-              <tubeGeometry args={[p.curve, 48, p.tubeRadius, 8, false]} />
-              <meshBasicMaterial
-                color={v.coronaColor}
-                transparent
-                opacity={0.85}
-                blending={THREE.AdditiveBlending}
-                depthWrite={false}
-              />
-            </mesh>
-            <mesh>
-              <tubeGeometry
-                args={[p.curve, 48, p.tubeRadius * 2.4, 8, false]}
-              />
-              <meshBasicMaterial
-                color={v.coronaColor}
-                transparent
-                opacity={0.25}
-                blending={THREE.AdditiveBlending}
-                depthWrite={false}
-              />
-            </mesh>
-          </group>
-        ))}
-      </group>
+      {/* (Magnetic-loop prominences removed — they read as off-putting tubes.
+          The fresnel rim glow + chromosphere shell carry the limb activity now.) */}
 
       {/* Solar wind — Points streaming outward radially */}
       <points>
