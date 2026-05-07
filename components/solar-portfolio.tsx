@@ -2,7 +2,7 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
-import { Suspense, useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState, type MutableRefObject } from "react"
 import * as THREE from "three"
 import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type Universe } from "@/lib/constants"
 import SolarSystem from "./solar-system"
@@ -13,7 +13,10 @@ import Background from "./background"
 import Nebula from "./nebula"
 import CosmicDust from "./cosmic-dust"
 import Rift from "./rift"
-import RiftCorridor from "./rift-corridor"
+import RiftCorridor, {
+  RIFT_TIMING,
+  type RiftCinematicState,
+} from "./rift-corridor"
 import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
 
@@ -43,77 +46,92 @@ function CameraController({
   mode,
   isTransitioning,
   setIsTransitioning,
-  riftActive,
-  riftDuration,
+  riftState,
+  onSwapUniverse,
+  onCinematicComplete,
 }: {
   mode: Mode
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
-  riftActive: boolean
-  riftDuration: number
+  riftState: MutableRefObject<RiftCinematicState>
+  onSwapUniverse: () => void
+  onCinematicComplete: () => void
 }) {
   const { camera } = useThree()
   const target = useRef(new THREE.Vector3(0, 25, 0))
-  const riftStart = useRef<number | null>(null)
-  const riftStartPos = useRef<THREE.Vector3 | null>(null)
+  // Captured camera position when stage 'in' starts, AND nearRift snapshot
+  // when stage 'out' starts. Reused for the lerp source.
+  const stageStartPos = useRef<THREE.Vector3 | null>(null)
 
   useFrame((state) => {
-    // ── Rift cinematic takes priority ─────────────────────────────────────
-    // Three-phase camera choreography (4s default duration):
-    //   • Phase A (0.00-0.40): accelerating dolly IN to the rift core. Gaze
-    //     pans smoothly from the sun (origin) to the rift in lockstep — no
-    //     frame-1 pop. (User says "perfect" — leave alone.)
-    //   • Phase B (0.40-0.55): HOLD at the rift core while the warp
-    //     corridor reaches full opacity. Universe swap fires at t01 = 0.5.
-    //   • Phase C (0.55-1.0): slow, lingering pull OUT to the new universe's
-    //     overhead system view. easeInOutCubic gives a smooth start (camera
-    //     lingers at the rift) and a smooth arrival overhead. The corridor's
-    //     long fade-out (0.54-0.85, see rift-corridor.tsx) crossfades into
-    //     the new universe's rift mesh as the camera retreats — the user
-    //     "emerges through the rift" instead of teleporting away from it.
-    if (riftActive) {
-      if (riftStart.current === null) {
-        riftStart.current = state.clock.elapsedTime
-        riftStartPos.current = camera.position.clone()
-      }
-      const t01 = Math.min(
-        1,
-        (state.clock.elapsedTime - riftStart.current) / riftDuration,
-      )
+    const sr = riftState.current
 
-      // Position RIFT_NEAR_DIST units in front of the rift core, on the line
-      // from the world origin to the rift.
+    // ── Rift cinematic takes priority ─────────────────────────────────────
+    // Stage machine driven by riftState.current (see rift-corridor.tsx for
+    // the timing constants and stage definitions).
+    //   • 'in'   (1.6s): accelerating dolly IN to the rift core. Gaze pans
+    //                    sun → rift in lockstep. Corridor fades in over
+    //                    the last 0.4s.
+    //   • 'peak' (var):  camera held at rift, corridor at full opacity.
+    //                    Universe swap fires when entering this stage.
+    //                    Holds until riftState.ready flips true (~800ms
+    //                    post-swap, after new universe shaders compile).
+    //   • 'out'  (1.8s): smooth pull OUT to overhead. Corridor fades out
+    //                    over first 1.5s. Crossfades into new rift mesh.
+    if (sr.stage !== "idle") {
+      // Lazy-init the stage's start time on its first frame.
+      if (sr.stageStart < 0) {
+        sr.stageStart = state.clock.elapsedTime
+        if (sr.stage === "in") {
+          stageStartPos.current = camera.position.clone()
+        }
+      }
+      const t = state.clock.elapsedTime - sr.stageStart
+
+      // nearRift = position RIFT_NEAR_DIST units in front of the rift core.
       const riftDir = RIFT_WORLD_POS.clone().normalize()
       const nearRift = RIFT_WORLD_POS.clone().sub(
         riftDir.multiplyScalar(RIFT_NEAR_DIST),
       )
 
-      if (t01 < 0.4) {
-        // Phase A — dolly IN (slow start, fast end) "spooling up to warp".
-        const k = easeInCubic(t01 / 0.4)
-        camera.position.lerpVectors(riftStartPos.current!, nearRift, k)
+      if (sr.stage === "in") {
+        const k = easeInCubic(Math.min(t / RIFT_TIMING.IN_DURATION, 1))
+        camera.position.lerpVectors(stageStartPos.current!, nearRift, k)
         _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
         camera.lookAt(_lookAt)
-      } else if (t01 < 0.55) {
-        // Phase B — held at the rift core during corridor full opacity.
+
+        if (t >= RIFT_TIMING.IN_DURATION) {
+          // Transition: 'in' → 'peak'. Fire the universe swap; the corridor
+          // is now at full opacity and hides the actual swap.
+          sr.stage = "peak"
+          sr.stageStart = state.clock.elapsedTime
+          onSwapUniverse()
+        }
+      } else if (sr.stage === "peak") {
         camera.position.copy(nearRift)
         camera.lookAt(RIFT_WORLD_POS)
-      } else {
-        // Phase C — slow, deliberate pull OUT. Camera lingers at the rift
-        // briefly (corridor still mostly opaque) then drifts smoothly to
-        // overhead as the corridor dissolves.
-        const k = easeInOutCubic((t01 - 0.55) / 0.45)
-        camera.position.lerpVectors(nearRift, RIFT_OVERHEAD, k)
+
+        if (sr.ready && t >= RIFT_TIMING.PEAK_MIN_DURATION) {
+          // Transition: 'peak' → 'out'. Universe is ready; release.
+          sr.stage = "out"
+          sr.stageStart = state.clock.elapsedTime
+          stageStartPos.current = nearRift.clone()
+        }
+      } else if (sr.stage === "out") {
+        const k = easeInOutCubic(Math.min(t / RIFT_TIMING.OUT_DURATION, 1))
+        camera.position.lerpVectors(stageStartPos.current!, RIFT_OVERHEAD, k)
         _lookAt.lerpVectors(RIFT_WORLD_POS, ORIGIN, k)
         camera.lookAt(_lookAt)
+
+        if (t >= RIFT_TIMING.OUT_DURATION) {
+          // Cinematic complete.
+          sr.stage = "idle"
+          sr.stageStart = -1
+          stageStartPos.current = null
+          onCinematicComplete()
+        }
       }
       return
-    }
-
-    if (riftStart.current !== null) {
-      // Rift just finished — let normal camera handling take over
-      riftStart.current = null
-      riftStartPos.current = null
     }
 
     if (!isTransitioning) return
@@ -146,6 +164,14 @@ export default function SolarPortfolio() {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [paused, setPaused] = useState(false)
   const [riftActive, setRiftActive] = useState(false)
+  // Stage state for the rift cinematic. Mutated in place by CameraController
+  // and read by RiftCorridor — both run in useFrame on the same Canvas, so a
+  // ref keeps them in sync without per-frame React re-renders.
+  const riftState = useRef<RiftCinematicState>({
+    stage: "idle",
+    stageStart: -1,
+    ready: true,
+  })
   // Joystick velocity from the navigation dial (-1..1 each axis). When non-zero
   // a RAF loop integrates it into planetRotation for continuous rotation.
   const joystickRef = useRef({ x: 0, y: 0 })
@@ -227,9 +253,28 @@ export default function SolarPortfolio() {
     setSelectedLandmark(null)
     setHoveredPlanet(null)
     setRiftActive(true)
-    // Universe swap + camera target reset happen at the *midpoint* of the
-    // corridor transition (RiftCorridor calls onMidpoint at t01 = 0.5), so
-    // the user emerges into the new system view as the fade is reversing.
+    // Initialize the cinematic stage. CameraController will pick this up on
+    // its next frame and lazy-init the stageStart timestamp from the canvas
+    // clock. Universe swap fires when CameraController transitions 'in' →
+    // 'peak'; the corridor sits at full opacity until riftState.ready flips
+    // true, which we schedule ~800ms after the swap.
+    riftState.current = { stage: "in", stageStart: -1, ready: false }
+  }
+
+  const handleSwapUniverse = () => {
+    setUniverse((u) => (u === "professional" ? "personal" : "professional"))
+    setIsTransitioning(true)
+    // Give the new universe ~800ms to compile its shaders (the actual cause
+    // of the brief on-load freeze the user hit) before letting the corridor
+    // fade out and the camera pull back. If shaders are already cached on
+    // a subsequent swap this just adds a beat of "warp peak" — fine.
+    setTimeout(() => {
+      riftState.current.ready = true
+    }, 800)
+  }
+
+  const handleCinematicComplete = () => {
+    setRiftActive(false)
   }
 
   // (Rotation now driven entirely by the NavDial joystick + the integrator above.)
@@ -265,8 +310,9 @@ export default function SolarPortfolio() {
             mode={mode}
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
-            riftActive={riftActive}
-            riftDuration={4}
+            riftState={riftState}
+            onSwapUniverse={handleSwapUniverse}
+            onCinematicComplete={handleCinematicComplete}
           />
 
           <ambientLight intensity={LIGHTING.ambient} />
@@ -306,17 +352,9 @@ export default function SolarPortfolio() {
             <MoonView landmark={selectedLandmark} seed={landmarkSeed} />
           )}
 
-          {/* Rift transition — fullscreen Kali-fractal corridor that fades in,
-              flies through, and fades out. Universe swap fires at the midpoint. */}
-          <RiftCorridor
-            active={riftActive}
-            duration={4}
-            onMidpoint={() => {
-              setUniverse((u) => (u === "professional" ? "personal" : "professional"))
-              setIsTransitioning(true)
-            }}
-            onComplete={() => setRiftActive(false)}
-          />
+          {/* Rift transition — lightspeed corridor. Stage machine lives in
+              CameraController; this just renders opacity from riftState. */}
+          <RiftCorridor active={riftActive} riftState={riftState} />
 
           <OrbitControls
             // Pan stays off so rotation is always anchored to the sun (system),

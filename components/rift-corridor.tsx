@@ -1,35 +1,55 @@
 "use client"
 
 // Lightspeed warp corridor — fullscreen overlay used during the rift transition
-// between universes. Replaces the previous Kali-fractal shader with a cleaner
-// hyperspace-jump effect that's cheap to render (no raymarching, just
+// between universes. Cheap radial-streak shader (no raymarching, just
 // analytical math over 3 angular layers of pseudo-random stars).
 //
-// Choreography (driven by `active` + `duration`, default 4s):
-//   t01 in [0.00, 0.40]: invisible — camera dollying IN to the rift core
-//   t01 in [0.40, 0.46]: fade IN (camera held at rift)
-//   t01 in [0.46, 0.54]: full opacity (universe swap fires at t01 = 0.5)
-//   t01 in [0.54, 0.85]: LONG fade OUT — crossfades with the camera's
-//                        Phase C pull-out (starts at 0.55) so the warp
-//                        tunnel dissolves into the new universe's rift
-//                        mesh as the camera retreats. User emerges
-//                        through the rift instead of teleporting away.
-//   t01 in [0.85, 1.00]: invisible — camera continues to overhead
+// STAGE-BASED CHOREOGRAPHY (was t01-driven, now in/peak/out):
+//   stage 'in'   (1.6s fixed): camera dollies in. Corridor invisible until
+//                              the last 0.4s of the stage, then fades to 1.
+//   stage 'peak' (variable):   camera held at rift, corridor at full
+//                              opacity. Universe swap fires on entry.
+//                              Holds until parent flips riftState.ready
+//                              true (~800ms post-swap, after new universe
+//                              shaders have compiled). Min hold = 0.5s.
+//   stage 'out'  (1.8s fixed): camera dollies out, corridor fades out
+//                              over the first 1.5s. Crossfades into the
+//                              new universe's rift mesh.
 //
-// See `solar-portfolio.tsx` CameraController for the matching camera
-// choreography — they were designed together.
+// CameraController (solar-portfolio.tsx) owns the state machine and
+// transitions the stages; this corridor just reads riftState.current
+// and renders the matching opacity. They share one ref.
 
 import { useEffect, useRef, useState } from "react"
 import { useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 import type { ShaderMaterial } from "three"
+import type { MutableRefObject } from "react"
+
+export type RiftStage = "idle" | "in" | "peak" | "out"
+
+export interface RiftCinematicState {
+  stage: RiftStage
+  /** state.clock.elapsedTime when the current stage started; -1 = uninitialized. */
+  stageStart: number
+  /** Set true ~800ms after universe swap so 'peak' can transition to 'out'. */
+  ready: boolean
+}
+
+/** Stage timing — kept in this file so corridor + camera stay in sync. */
+export const RIFT_TIMING = {
+  IN_DURATION: 1.6,
+  OUT_DURATION: 1.8,
+  PEAK_MIN_DURATION: 0.5,
+  // Corridor opacity ramps within each stage:
+  IN_FADE_START: 1.2,        // start fading in at t=1.2 of 'in' stage
+  IN_FADE_END: 1.6,          // fully opaque at end of 'in' stage
+  OUT_FADE_DURATION: 1.5,    // fade out over first 1.5s of 'out' stage
+} as const
 
 interface RiftCorridorProps {
   active: boolean
-  /** Total transition length (camera + corridor) in seconds. */
-  duration?: number
-  onMidpoint?: () => void
-  onComplete?: () => void
+  riftState: MutableRefObject<RiftCinematicState>
 }
 
 const VERT = /* glsl */ `
@@ -124,60 +144,46 @@ const FRAG = /* glsl */ `
   }
 `
 
-export default function RiftCorridor({
-  active,
-  duration = 4,
-  onMidpoint,
-  onComplete,
-}: RiftCorridorProps) {
+export default function RiftCorridor({ active, riftState }: RiftCorridorProps) {
   const matRef = useRef<ShaderMaterial>(null)
-  const startRef = useRef<number | null>(null)
-  const midpointFiredRef = useRef(false)
-  const completeFiredRef = useRef(false)
   const { size } = useThree()
-  // Internal mount flag — keeps the mesh alive through the fade-out window
-  // even after `active` flips back to false.
+  // Mount/unmount the mesh based on `active`. Brief delay on unmount lets
+  // the final fade-out frames render before the mesh disappears.
   const [render, setRender] = useState(false)
 
-  // Reset timing whenever the rift activates.
   useEffect(() => {
     if (active) {
-      startRef.current = null
-      midpointFiredRef.current = false
-      completeFiredRef.current = false
       setRender(true)
+    } else {
+      const id = setTimeout(() => setRender(false), 60)
+      return () => clearTimeout(id)
     }
   }, [active])
 
   useFrame((state) => {
     const m = matRef.current
     if (!m || !render) return
+    const sr = riftState.current
 
-    if (startRef.current === null) {
-      startRef.current = state.clock.elapsedTime
-    }
-    const t01 = Math.min(1, (state.clock.elapsedTime - startRef.current) / duration)
-
-    // Midpoint = swap universes. End = release the transition.
-    if (!midpointFiredRef.current && t01 >= 0.5) {
-      midpointFiredRef.current = true
-      onMidpoint?.()
-    }
-    if (!completeFiredRef.current && t01 >= 1.0) {
-      completeFiredRef.current = true
-      onComplete?.()
-      setRender(false)
-    }
-
-    // Smooth opacity envelope — see the file header for the timeline.
-    // Long fade-out (0.54-0.85) overlaps with the camera's Phase C
-    // pull-out (starts at 0.55), so the warp tunnel slowly dissolves
-    // into the new universe's rift view instead of popping off.
     let opacity = 0
-    if (t01 >= 0.40 && t01 < 0.46) opacity = (t01 - 0.40) / 0.06
-    else if (t01 >= 0.46 && t01 <= 0.54) opacity = 1
-    else if (t01 > 0.54 && t01 <= 0.85) opacity = (0.85 - t01) / 0.31
-    opacity = Math.max(0, Math.min(1, opacity))
+    if (sr.stage !== "idle" && sr.stageStart >= 0) {
+      const t = state.clock.elapsedTime - sr.stageStart
+
+      if (sr.stage === "in") {
+        // Fade in during the last (IN_FADE_END - IN_FADE_START) seconds.
+        if (t >= RIFT_TIMING.IN_FADE_START) {
+          opacity = Math.min(
+            (t - RIFT_TIMING.IN_FADE_START) /
+              (RIFT_TIMING.IN_FADE_END - RIFT_TIMING.IN_FADE_START),
+            1,
+          )
+        }
+      } else if (sr.stage === "peak") {
+        opacity = 1
+      } else if (sr.stage === "out") {
+        opacity = Math.max(1 - t / RIFT_TIMING.OUT_FADE_DURATION, 0)
+      }
+    }
 
     m.uniforms.uTime.value = state.clock.elapsedTime
     m.uniforms.uOpacity.value = opacity
