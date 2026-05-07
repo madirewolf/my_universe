@@ -6,11 +6,11 @@
 // analytical math over 3 angular layers of pseudo-random stars).
 //
 // Choreography (driven by `active` + `duration`, default 4s):
-//   t01 in [0.00, 0.20]: invisible — camera flying into the rift
-//   t01 in [0.20, 0.45]: fade IN (smooth, ~1s window)
-//   t01 in [0.45, 0.55]: full opacity (universe swap fires at t01 = 0.5)
-//   t01 in [0.55, 0.80]: fade OUT (smooth, ~1s window)
-//   t01 in [0.80, 1.00]: invisible — camera flying out into new system
+//   t01 in [0.00, 0.40]: invisible — camera dollying IN to the rift core
+//   t01 in [0.40, 0.46]: fade IN  (camera now held at rift)
+//   t01 in [0.46, 0.54]: full opacity (universe swap fires at t01 = 0.5)
+//   t01 in [0.54, 0.60]: fade OUT
+//   t01 in [0.60, 1.00]: invisible — camera dollying OUT into new system
 //
 // See `solar-portfolio.tsx` CameraController for the matching camera
 // choreography — they were designed together.
@@ -157,10 +157,12 @@ export default function RiftCorridor({
     }
 
     // Smooth opacity envelope — see the file header for the timeline.
+    // Corridor only kicks in once the camera is fully zoomed onto the rift
+    // (t01 = 0.4 in solar-portfolio.tsx CameraController).
     let opacity = 0
-    if (t01 >= 0.20 && t01 < 0.45) opacity = (t01 - 0.20) / 0.25
-    else if (t01 >= 0.45 && t01 <= 0.55) opacity = 1
-    else if (t01 > 0.55 && t01 <= 0.80) opacity = (0.80 - t01) / 0.25
+    if (t01 >= 0.40 && t01 < 0.46) opacity = (t01 - 0.40) / 0.06
+    else if (t01 >= 0.46 && t01 <= 0.54) opacity = 1
+    else if (t01 > 0.54 && t01 <= 0.60) opacity = (0.60 - t01) / 0.06
     opacity = Math.max(0, Math.min(1, opacity))
 
     m.uniforms.uTime.value = state.clock.elapsedTime

@@ -31,10 +31,13 @@ function easeOutCubic(t: number): number {
 
 const RIFT_WORLD_POS = new THREE.Vector3(0, 16, -75)
 const RIFT_OVERHEAD = new THREE.Vector3(0, 52, 0)
+const ORIGIN = new THREE.Vector3(0, 0, 0)
 // How close the camera gets to the rift core at the midpoint of the cinematic.
 // Aggressive on purpose — the corridor's full-opacity plateau hides any
 // micro-clipping into the rift mesh while we're this close.
 const RIFT_NEAR_DIST = 0.8
+// Reused scratch Vector3 for the lookAt lerp — avoids per-frame allocations.
+const _lookAt = new THREE.Vector3()
 
 function CameraController({
   mode,
@@ -56,12 +59,15 @@ function CameraController({
 
   useFrame((state) => {
     // ── Rift cinematic takes priority ─────────────────────────────────────
-    // Two-phase camera choreography:
-    //   • t01 in [0.0, 0.5]: accelerating dolly toward the rift core
-    //   • t01 in [0.5, 1.0]: decelerating pull-out to the new universe's
-    //                          overhead system view
-    // The corridor's full-opacity plateau (0.45-0.55, see rift-corridor.tsx)
-    // hides the lookAt swap and universe switch that fire at t01 = 0.5.
+    // Three-phase camera choreography:
+    //   • Phase A (0.0-0.4): accelerating dolly IN to the rift core. Gaze
+    //     pans smoothly from the sun (origin) to the rift in lockstep — no
+    //     frame-1 pop.
+    //   • Phase B (0.4-0.6): HOLD at the rift core while the warp corridor
+    //     punches through. Universe swap fires at t01 = 0.5 inside the
+    //     corridor's full-opacity plateau (see rift-corridor.tsx).
+    //   • Phase C (0.6-1.0): decelerating pull OUT to the new universe's
+    //     overhead system view. Gaze pans rift → origin.
     if (riftActive) {
       if (riftStart.current === null) {
         riftStart.current = state.clock.elapsedTime
@@ -79,17 +85,22 @@ function CameraController({
         riftDir.multiplyScalar(RIFT_NEAR_DIST),
       )
 
-      if (t01 < 0.5) {
-        // Accelerating dolly-IN (slow start, fast end) → "spooling up to warp".
-        const k = easeInCubic(t01 * 2)
+      if (t01 < 0.4) {
+        // Phase A — dolly IN (slow start, fast end) "spooling up to warp".
+        const k = easeInCubic(t01 / 0.4)
         camera.position.lerpVectors(riftStartPos.current!, nearRift, k)
+        _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
+        camera.lookAt(_lookAt)
+      } else if (t01 < 0.6) {
+        // Phase B — held at the rift core. Corridor takes over visually.
+        camera.position.copy(nearRift)
         camera.lookAt(RIFT_WORLD_POS)
       } else {
-        // Decelerating pull-OUT (fast start, slow end) → "exiting warp" into
-        // the new universe.
-        const k = easeOutCubic((t01 - 0.5) * 2)
+        // Phase C — pull OUT (fast start, slow end) "exiting warp".
+        const k = easeOutCubic((t01 - 0.6) / 0.4)
         camera.position.lerpVectors(nearRift, RIFT_OVERHEAD, k)
-        camera.lookAt(0, 0, 0)
+        _lookAt.lerpVectors(RIFT_WORLD_POS, ORIGIN, k)
+        camera.lookAt(_lookAt)
       }
       return
     }
