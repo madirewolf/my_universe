@@ -37,9 +37,10 @@ const RIFT_WORLD_POS = new THREE.Vector3(0, 16, -75)
 const RIFT_OVERHEAD = new THREE.Vector3(0, 52, 0)
 const ORIGIN = new THREE.Vector3(0, 0, 0)
 // How close the camera gets to the rift core at the midpoint of the cinematic.
-// Aggressive on purpose — the corridor's full-opacity plateau hides any
-// micro-clipping into the rift mesh while we're this close.
-const RIFT_NEAR_DIST = 0.8
+// Very close — the corridor at full opacity hides whatever the camera sees
+// from inside the core's icosahedron (radius 1.2). User wanted the camera
+// to get genuinely "right up to" the rift before the corridor takes over.
+const RIFT_NEAR_DIST = 0.4
 // Reused scratch Vector3 for the lookAt lerp — avoids per-frame allocations.
 const _lookAt = new THREE.Vector3()
 
@@ -170,6 +171,49 @@ function CameraController({
     }
   })
 
+  return null
+}
+
+/**
+ * ShaderWarmer
+ *
+ * Mounts inside the Canvas. On first mount calls `gl.compileAsync(scene,
+ * camera)` which iterates ALL materials in the scene (incl. hidden meshes
+ * via scene.traverse, regardless of visibility) and compiles their shader
+ * programs to an internal 1×1 render target.
+ *
+ * Combined with the dual-mount system-mode JSX below (both universes'
+ * SolarSystem + Rift mounted, inactive group set to visible=false), this
+ * means by the time the user clicks the rift the OTHER universe's
+ * shaders are already cached. The swap then becomes a visibility toggle,
+ * not a fresh shader compile, so the corridor stops freezing mid-flight.
+ *
+ * Best-effort: compileAsync resolves async; if the user clicks rift
+ * before warm-up finishes, RiftCompileGate (below) acts as a backup
+ * gate.
+ */
+function ShaderWarmer() {
+  const { gl, scene, camera } = useThree()
+  useEffect(() => {
+    const compileAsync = (
+      gl as unknown as {
+        compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>
+      }
+    ).compileAsync
+    if (typeof compileAsync === "function") {
+      compileAsync.call(gl, scene, camera).catch(() => {
+        /* swallow — three.js's program cache is the actual prize */
+      })
+    } else {
+      try {
+        gl.compile(scene, camera)
+      } catch {
+        /* ignore */
+      }
+    }
+    // Run once on mount only — shader compile is one-shot per program.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return null
 }
 
@@ -425,15 +469,30 @@ export default function SolarPortfolio() {
 
           {mode === "system" && (
             <>
-              <SolarSystem
-                planets={planets}
-                sunVariant={config.sunVariant}
-                paused={paused}
-                onSunClick={() => setPaused((p) => !p)}
-                onPlanetClick={handlePlanetClick}
-                onPlanetHover={setHoveredPlanet}
-              />
-              <Rift onClick={handleEnterRift} universe={universe} paused={paused} />
+              {/* Dual-mount — both universes mounted from app start, hidden
+                  one toggled via visible=false. ShaderWarmer (one mount
+                  below) compiles both universes' shader programs at
+                  startup so the rift swap is just a visibility flip,
+                  not a synchronous shader compile that stalls the
+                  WebGL frame loop. */}
+              {(["professional", "personal"] as Universe[]).map((u) => {
+                const cfg = UNIVERSE_CONFIG[u]
+                const isActive = u === universe
+                return (
+                  <group key={u} visible={isActive}>
+                    <SolarSystem
+                      planets={cfg.planets}
+                      sunVariant={cfg.sunVariant}
+                      paused={paused || !isActive}
+                      onSunClick={() => setPaused((p) => !p)}
+                      onPlanetClick={handlePlanetClick}
+                      onPlanetHover={setHoveredPlanet}
+                    />
+                    <Rift onClick={handleEnterRift} universe={u} paused={paused || !isActive} />
+                  </group>
+                )
+              })}
+              <ShaderWarmer />
             </>
           )}
 

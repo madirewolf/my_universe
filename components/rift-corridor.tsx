@@ -61,7 +61,7 @@ export const RIFT_TIMING = {
   OUT_DURATION: 1.8,
   PEAK_MIN_DURATION: 0.5,     // floor on peak hold even if shaders are warm
   // Corridor opacity ramps within each stage:
-  IN_FADE_START: 1.8,         // corridor begins materializing during zoom
+  IN_FADE_START: 2.2,         // corridor only kicks in for the LAST 0.3s of zoom
   IN_FADE_END: 2.5,           // fully opaque exactly when camera reaches rift
   OUT_FADE_DURATION: 1.5,     // fade out over first 1.5s of 'out' stage
 } as const
