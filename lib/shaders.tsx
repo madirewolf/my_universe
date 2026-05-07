@@ -657,6 +657,127 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
         />
       )
 
+    case "cat":
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.3, 0.5, 0.85).normalize() },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView; varying vec3 vObj;
+            void main() {
+              vUv = uv;
+              vObj = normal;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vPos = wp.xyz;
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time;
+            uniform vec3 uLightDir;
+            varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+
+            // Anti-aliased line segment between a..b at point p, with thickness w.
+            float lineSeg(vec2 p, vec2 a, vec2 b, float w) {
+              vec2 pa = p - a, ba = b - a;
+              float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+              float d = length(pa - ba * h);
+              return 1.0 - smoothstep(w, w * 1.8, d);
+            }
+
+            void main() {
+              vec3 n = normalize(vN);
+              vec3 v = normalize(vView);
+              vec3 sp = normalize(vObj);
+
+              // Black-fur base with subtle blue undertone + fur noise
+              float fur = fbm(sp * 14.0) * 0.05;
+              vec3 base = vec3(0.035, 0.035, 0.055) + vec3(fur);
+
+              // Cat face only on the camera-facing hemisphere. Using view-space
+              // normal so the face follows the camera as the planet rotates.
+              float frontMask = smoothstep(0.05, 0.5, n.z);
+
+              if (frontMask > 0.0) {
+                vec2 face = n.xy;
+
+                // Eyes
+                vec2 eyeL = vec2(-0.22, 0.10);
+                vec2 eyeR = vec2( 0.22, 0.10);
+
+                // Periodic blink — closed for ~0.16s every 3.6s
+                float bt = mod(time, 3.6);
+                float blink = max(0.0, smoothstep(3.30, 3.38, bt) - smoothstep(3.46, 3.54, bt));
+                float openY = mix(1.0, 0.06, blink);
+
+                float dL = length((face - eyeL) / vec2(0.10, 0.13 * openY));
+                float dR = length((face - eyeR) / vec2(0.10, 0.13 * openY));
+                float eyeWhite = (1.0 - smoothstep(0.85, 1.0, dL))
+                               + (1.0 - smoothstep(0.85, 1.0, dR));
+                eyeWhite = clamp(eyeWhite, 0.0, 1.0);
+
+                // Bright green iris with a hint of glow
+                vec3 eyeCol = vec3(0.35, 1.0, 0.45);
+                base = mix(base, eyeCol, eyeWhite * frontMask);
+
+                // Iris glow
+                float eyeGlow = (exp(-dL * dL * 4.0) + exp(-dR * dR * 4.0)) * (1.0 - blink);
+                base += vec3(0.05, 0.35, 0.12) * eyeGlow * frontMask;
+
+                // Vertical slit pupil
+                float pL = length((face - eyeL) / vec2(0.012, 0.10));
+                float pR = length((face - eyeR) / vec2(0.012, 0.10));
+                float pupil = ((1.0 - smoothstep(0.85, 1.0, pL))
+                            + (1.0 - smoothstep(0.85, 1.0, pR)))
+                            * (1.0 - blink);
+                base = mix(base, vec3(0.0, 0.02, 0.0), pupil * frontMask);
+
+                // Whiskers — 3 thin lines per cheek, slight downward angle
+                float whisker = 0.0;
+                vec2 cheekL = vec2(-0.13, -0.05);
+                vec2 cheekR = vec2( 0.13, -0.05);
+                for (int i = 0; i < 3; i++) {
+                  float yOff = (float(i) - 1.0) * 0.05;
+                  vec2 endL = cheekL + vec2(-0.30, yOff);
+                  vec2 endR = cheekR + vec2( 0.30, yOff);
+                  whisker += lineSeg(face, cheekL, endL, 0.0035);
+                  whisker += lineSeg(face, cheekR, endR, 0.0035);
+                }
+                whisker = clamp(whisker, 0.0, 1.0);
+                base = mix(base, vec3(0.85, 0.85, 0.92), whisker * 0.78 * frontMask);
+
+                // Tiny pink nose
+                vec2 nose = vec2(0.0, -0.04);
+                float dNose = length((face - nose) / vec2(0.045, 0.030));
+                float noseMask = (1.0 - smoothstep(0.85, 1.0, dNose));
+                base = mix(base, vec3(0.95, 0.55, 0.6), noseMask * frontMask);
+              }
+
+              // Soft lighting — gentle, diffuse so she reads as fur
+              LightOut lo = shade(n, v, normalize(uLightDir), base, 12.0, 0.15, 0.0, 0.55);
+
+              // Subtle ear-tip rim glow on the upper edge so the silhouette
+              // doesn't disappear into the background
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+              vec3 em = vec3(0.06, 0.10, 0.18) * fres;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
+            }
+          `
+          }
+        />
+      )
+
     case "personal":
       return (
         <shaderMaterial
