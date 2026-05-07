@@ -28,3 +28,10 @@ Continue building your app on:
 2. Deploy your chats from the v0 interface
 3. Changes are automatically pushed to this repository
 4. Vercel deploys the latest version from this repository
+
+## Personal voice / source of truth
+
+The verbatim long-form answers Mohammad gave (Music, Film, Philosophy,
+Nature, Nyx) live in [`VOICE.md`](./VOICE.md). That's the canonical source
+for any personal-universe planet content — edit it first, then propagate
+into `lib/constants.ts`.
