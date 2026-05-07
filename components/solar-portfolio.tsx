@@ -69,18 +69,25 @@ function CameraController({
 
     // ── Rift cinematic takes priority ─────────────────────────────────────
     // Stage machine driven by riftState.current (see rift-corridor.tsx for
-    // the timing constants and stage definitions).
-    //   • 'in'   (1.6s): accelerating dolly IN to the rift core. Gaze pans
-    //                    sun → rift in lockstep. Corridor fades in over
-    //                    the last 0.4s.
-    //   • 'peak' (var):  camera held at rift, corridor at full opacity.
-    //                    Universe swap fires when entering this stage.
-    //                    Holds until riftState.ready flips true (~800ms
-    //                    post-swap, after new universe shaders compile).
-    //   • 'out'  (1.8s): smooth pull OUT to overhead. Corridor fades out
-    //                    over first 1.5s. Crossfades into new rift mesh.
+    // timing constants).
+    //   • 'in'   (2.5s): two sub-phases, sequenced.
+    //       ROTATE (0.0-0.9s): camera holds at start, gaze smoothly pans
+    //                          ORIGIN → RIFT_WORLD_POS. Corridor invisible.
+    //                          You see the camera deliberately swing onto
+    //                          the rift before any motion.
+    //       ZOOM   (0.9-2.5s): camera accelerates toward nearRift along
+    //                          the line through the rift, gaze locked on
+    //                          the rift. Corridor fades in over the last
+    //                          0.7s of zoom (see RIFT_TIMING.IN_FADE_*).
+    //   • 'peak' (var):    camera held at rift, corridor at full opacity.
+    //                      Universe swap fires when entering this stage.
+    //                      Holds until riftState.ready flips true — set
+    //                      by RiftCompileGate after gl.compileAsync
+    //                      resolves (i.e. the new universe's shaders are
+    //                      actually compiled). Min floor = 0.5s.
+    //   • 'out'  (1.8s):   smooth pull OUT to overhead. Corridor fades
+    //                      out over first 1.5s, crossfades into new rift.
     if (sr.stage !== "idle") {
-      // Lazy-init the stage's start time on its first frame.
       if (sr.stageStart < 0) {
         sr.stageStart = state.clock.elapsedTime
         if (sr.stage === "in") {
@@ -89,21 +96,32 @@ function CameraController({
       }
       const t = state.clock.elapsedTime - sr.stageStart
 
-      // nearRift = position RIFT_NEAR_DIST units in front of the rift core.
+      // nearRift = RIFT_NEAR_DIST units in front of the rift core.
       const riftDir = RIFT_WORLD_POS.clone().normalize()
       const nearRift = RIFT_WORLD_POS.clone().sub(
         riftDir.multiplyScalar(RIFT_NEAR_DIST),
       )
 
       if (sr.stage === "in") {
-        const k = easeInCubic(Math.min(t / RIFT_TIMING.IN_DURATION, 1))
-        camera.position.lerpVectors(stageStartPos.current!, nearRift, k)
-        _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
-        camera.lookAt(_lookAt)
-
-        if (t >= RIFT_TIMING.IN_DURATION) {
-          // Transition: 'in' → 'peak'. Fire the universe swap; the corridor
-          // is now at full opacity and hides the actual swap.
+        if (t < RIFT_TIMING.IN_ROTATE_DURATION) {
+          // ROTATE sub-phase: camera holds at its start position; gaze
+          // pans smoothly from origin (sun) onto the rift.
+          const k = easeInOutCubic(t / RIFT_TIMING.IN_ROTATE_DURATION)
+          camera.position.copy(stageStartPos.current!)
+          _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
+          camera.lookAt(_lookAt)
+        } else if (t < RIFT_TIMING.IN_DURATION) {
+          // ZOOM sub-phase: camera dollies start → nearRift, gaze locked
+          // on the rift the whole time. Accelerating ease-in feels like
+          // "spooling up to lightspeed" once we've committed to the dive.
+          const localT =
+            (t - RIFT_TIMING.IN_ROTATE_DURATION) / RIFT_TIMING.IN_ZOOM_DURATION
+          const k = easeInCubic(Math.min(localT, 1))
+          camera.position.lerpVectors(stageStartPos.current!, nearRift, k)
+          camera.lookAt(RIFT_WORLD_POS)
+        } else {
+          // 'in' → 'peak'. Fire the universe swap (corridor is at full
+          // opacity now, so it hides the actual mesh-tree swap).
           sr.stage = "peak"
           sr.stageStart = state.clock.elapsedTime
           onSwapUniverse()
@@ -113,7 +131,7 @@ function CameraController({
         camera.lookAt(RIFT_WORLD_POS)
 
         if (sr.ready && t >= RIFT_TIMING.PEAK_MIN_DURATION) {
-          // Transition: 'peak' → 'out'. Universe is ready; release.
+          // 'peak' → 'out'. New universe shaders are compiled; release.
           sr.stage = "out"
           sr.stageStart = state.clock.elapsedTime
           stageStartPos.current = nearRift.clone()
@@ -125,7 +143,6 @@ function CameraController({
         camera.lookAt(_lookAt)
 
         if (t >= RIFT_TIMING.OUT_DURATION) {
-          // Cinematic complete.
           sr.stage = "idle"
           sr.stageStart = -1
           stageStartPos.current = null
@@ -152,6 +169,94 @@ function CameraController({
       setIsTransitioning(false)
     }
   })
+
+  return null
+}
+
+/**
+ * RiftCompileGate
+ *
+ * Watches `universe` and, on each change after initial mount, uses
+ * `WebGLRenderer.compileAsync` (three.js r152+) to verify that ALL
+ * materials in the new scene tree have been compiled before signaling the
+ * rift cinematic that it's safe to transition out of 'peak'.
+ *
+ * Why: when the universe swaps, the new universe's planet shaders are
+ * lazy-compiled on first render — that's the first-load freeze the user
+ * was hitting (the corridor visually stalled because the GPU was blocked
+ * compiling). compileAsync uses an internal 1×1 render target plus the
+ * KHR_parallel_shader_compile extension to compile in the background and
+ * resolves a Promise when finished, so we get a real "scene ready"
+ * signal instead of a hardcoded setTimeout guess.
+ *
+ * If compileAsync isn't available (very old three.js / older browsers),
+ * we fall back to synchronous compile() + a 300ms beat. A 4s hard
+ * fallback prevents the cinematic from ever stalling indefinitely if
+ * something pathological happens.
+ */
+function RiftCompileGate({
+  universe,
+  riftState,
+}: {
+  universe: Universe
+  riftState: MutableRefObject<RiftCinematicState>
+}) {
+  const { gl, scene, camera } = useThree()
+  const isFirstRun = useRef(true)
+
+  useEffect(() => {
+    // Skip the initial mount — we only want to gate the cinematic AFTER
+    // a real universe swap.
+    if (isFirstRun.current) {
+      isFirstRun.current = false
+      return
+    }
+
+    let cancelled = false
+
+    // Defer one frame so React has fully committed the new scene tree
+    // (added the new planet meshes / shaders to three.js's scene graph)
+    // before we ask the renderer to compile them.
+    const raf = requestAnimationFrame(() => {
+      if (cancelled) return
+
+      const compileAsync = (
+        gl as unknown as {
+          compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>
+        }
+      ).compileAsync
+
+      const markReady = () => {
+        if (!cancelled) riftState.current.ready = true
+      }
+
+      if (typeof compileAsync === "function") {
+        compileAsync.call(gl, scene, camera).then(markReady).catch(markReady)
+      } else {
+        // Fallback for ancient three.js: synchronous compile + a small
+        // post-flush delay to let the GPU breathe before the corridor
+        // fades out.
+        try {
+          gl.compile(scene, camera)
+        } catch {
+          /* ignore */
+        }
+        setTimeout(markReady, 300)
+      }
+    })
+
+    // Hard ceiling — if something stalls compileAsync (offline GPU,
+    // browser bug), don't trap the user inside the corridor forever.
+    const fallback = setTimeout(() => {
+      if (!cancelled) riftState.current.ready = true
+    }, 4000)
+
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+      clearTimeout(fallback)
+    }
+  }, [universe, gl, scene, camera, riftState])
 
   return null
 }
@@ -265,13 +370,11 @@ export default function SolarPortfolio() {
   const handleSwapUniverse = () => {
     setUniverse((u) => (u === "professional" ? "personal" : "professional"))
     setIsTransitioning(true)
-    // Give the new universe ~800ms to compile its shaders (the actual cause
-    // of the brief on-load freeze the user hit) before letting the corridor
-    // fade out and the camera pull back. If shaders are already cached on
-    // a subsequent swap this just adds a beat of "warp peak" — fine.
-    setTimeout(() => {
-      riftState.current.ready = true
-    }, 800)
+    // riftState.ready stays false here. RiftCompileGate (rendered inside
+    // Canvas, below) watches the `universe` prop and flips ready=true when
+    // WebGLRenderer.compileAsync resolves — i.e. the new universe's shader
+    // programs are actually compiled. The corridor + camera 'peak' stage
+    // hold until then, so we never transition into a half-rendered scene.
   }
 
   const handleCinematicComplete = () => {
@@ -316,6 +419,7 @@ export default function SolarPortfolio() {
             onSwapUniverse={handleSwapUniverse}
             onCinematicComplete={handleCinematicComplete}
           />
+          <RiftCompileGate universe={universe} riftState={riftState} />
 
           <ambientLight intensity={LIGHTING.ambient} />
 

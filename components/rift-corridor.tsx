@@ -4,14 +4,18 @@
 // between universes. Cheap radial-streak shader (no raymarching, just
 // analytical math over 3 angular layers of pseudo-random stars).
 //
-// STAGE-BASED CHOREOGRAPHY (was t01-driven, now in/peak/out):
-//   stage 'in'   (1.6s fixed): camera dollies in. Corridor invisible until
-//                              the last 0.4s of the stage, then fades to 1.
+// STAGE-BASED CHOREOGRAPHY (in/peak/out):
+//   stage 'in'   (2.5s fixed): camera ROTATES toward rift first (0.9s
+//                              hold-and-pan) then ZOOMS to it (1.6s
+//                              dolly). Corridor invisible until the
+//                              last 0.7s of the stage, then ramps to 1.
 //   stage 'peak' (variable):   camera held at rift, corridor at full
 //                              opacity. Universe swap fires on entry.
-//                              Holds until parent flips riftState.ready
-//                              true (~800ms post-swap, after new universe
-//                              shaders have compiled). Min hold = 0.5s.
+//                              Holds until riftState.ready flips true,
+//                              which happens when WebGLRenderer
+//                              .compileAsync resolves (i.e. all new
+//                              universe shaders are actually compiled).
+//                              Min floor = 0.5s.
 //   stage 'out'  (1.8s fixed): camera dollies out, corridor fades out
 //                              over the first 1.5s. Crossfades into the
 //                              new universe's rift mesh.
@@ -36,15 +40,30 @@ export interface RiftCinematicState {
   ready: boolean
 }
 
-/** Stage timing — kept in this file so corridor + camera stay in sync. */
+/**
+ * Stage timing — single source of truth, shared with CameraController.
+ *
+ * The 'in' stage is internally split into two sub-phases by the camera:
+ *   • ROTATE (0..IN_ROTATE_DURATION):   camera holds at its start position,
+ *                                       gaze pans smoothly origin → rift.
+ *   • ZOOM   (IN_ROTATE_DURATION..IN_DURATION):
+ *                                       camera dollies start → nearRift,
+ *                                       gaze locked on the rift.
+ *
+ * Doing them sequentially (rather than concurrent like before) guarantees
+ * the camera is centered on the rift before it starts moving toward it —
+ * the user sees a deliberate "look at it, then go" beat.
+ */
 export const RIFT_TIMING = {
-  IN_DURATION: 1.6,
+  IN_ROTATE_DURATION: 0.9,
+  IN_ZOOM_DURATION: 1.6,
+  IN_DURATION: 2.5,           // = IN_ROTATE + IN_ZOOM
   OUT_DURATION: 1.8,
-  PEAK_MIN_DURATION: 0.5,
+  PEAK_MIN_DURATION: 0.5,     // floor on peak hold even if shaders are warm
   // Corridor opacity ramps within each stage:
-  IN_FADE_START: 1.2,        // start fading in at t=1.2 of 'in' stage
-  IN_FADE_END: 1.6,          // fully opaque at end of 'in' stage
-  OUT_FADE_DURATION: 1.5,    // fade out over first 1.5s of 'out' stage
+  IN_FADE_START: 1.8,         // corridor begins materializing during zoom
+  IN_FADE_END: 2.5,           // fully opaque exactly when camera reaches rift
+  OUT_FADE_DURATION: 1.5,     // fade out over first 1.5s of 'out' stage
 } as const
 
 interface RiftCorridorProps {
