@@ -118,7 +118,10 @@ function CameraController({
 
     if (!isTransitioning) return
     if (mode === "moon") {
-      target.current.set(0, 1.5, 9.5)
+      // Default top-down. Sprite Html cards billboard to face the camera so
+      // they stay readable regardless of angle. Tiny z offset breaks the
+      // OrbitControls gimbal-lock singularity at polar angle 0.
+      target.current.set(0, 12, 0.5)
     } else if (mode === "planet") {
       target.current.set(0, 0, 12)
     } else {
