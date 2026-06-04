@@ -18,6 +18,10 @@ export interface Landmark {
   technologies: string[]
   link?: string
   color: string
+  /** Optional image paths (relative to /public, e.g. "/nyx/img.webp"). */
+  images?: string[]
+  /** Optional list of labelled links rendered as stacked buttons. */
+  links?: { label: string; url: string }[]
 }
 
 /** Geometric shape of a planet's body. Defaults to "sphere". */
@@ -30,7 +34,7 @@ export type PlanetShape =
   | "dodecahedron"
   | "capsule"
 
-// PlanetEntry bundles everything about a planet — orbital params, presentation, content.
+// PlanetEntry bundles everything about a planet: orbital params, presentation, content.
 export interface PlanetEntry {
   type: string // shader key (see lib/shaders.tsx)
   distance: number
@@ -61,7 +65,7 @@ export interface UniverseConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PROFESSIONAL universe — the public-facing portfolio
+// PROFESSIONAL universe: the public-facing portfolio
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PROFESSIONAL: UniverseConfig = {
@@ -88,7 +92,7 @@ const PROFESSIONAL: UniverseConfig = {
           name: "DE1-SoC Pinball Engine",
           category: "Computer Graphics",
           description:
-            "A fully from-scratch C implementation of a pinball game physics engine and renderer targeting the ARM-based Terasic DE1-SoC board. The game drives a VGA display, simulates rigid-body ball dynamics and collisions, and maps user input (flippers, launch) to hardware buttons—running in real time on an FPGA-backed HPS core. Demonstrated both on actual hardware and via the CPULator DE1-SoC simulator.",
+            "A fully from-scratch C implementation of a pinball game physics engine and renderer targeting the ARM-based Terasic DE1-SoC board. The game drives a VGA display, simulates rigid-body ball dynamics and collisions, and maps user input (flippers, launch) to hardware buttons, running in real time on an FPGA-backed HPS core. Demonstrated both on actual hardware and via the CPULator DE1-SoC simulator.",
           technologies: [
             "Embedded Systems & Low-Level Programming",
             "Physics Simulation & Graphics Rendering",
@@ -143,7 +147,7 @@ const PROFESSIONAL: UniverseConfig = {
           name: "DeLorean Route Optimizer",
           category: "Pathfinding & Optimization",
           description:
-            "Phase II of the DeLorean GIS adding intelligent routing—from BFS/Dijkstra/A* to multi-destination “travelling courier” with greedy/multistart/two-opt and multi-destination Dijkstra. Modular pipeline plus future work on constraint-aware trip recommendations.",
+            "Phase II of the DeLorean GIS adding intelligent routing, from BFS/Dijkstra/A* to multi-destination “travelling courier” with greedy/multistart/two-opt and multi-destination Dijkstra. Modular pipeline plus future work on constraint-aware trip recommendations.",
           technologies: [
             "BFS",
             "Dijkstra",
@@ -211,7 +215,7 @@ const PROFESSIONAL: UniverseConfig = {
           name: "Tenstorrent – Systems Engineering",
           category: "Systems & Infrastructure",
           description:
-            "Built and maintained bring-up & qualification infrastructure for next-gen AI accelerator chips (Wormhole, Grayskull): automated tests, hardware bring-up on dev boards, real AI workload perf/stress testing, power-measurement experiments, and cross-team silicon/board debug—taking new processors from first-silicon through full qualification on CI.",
+            "Built and maintained bring-up & qualification infrastructure for next-gen AI accelerator chips (Wormhole, Grayskull): automated tests, hardware bring-up on dev boards, real AI workload perf/stress testing, power-measurement experiments, and cross-team silicon/board debug, taking new processors from first-silicon through full qualification on CI.",
           technologies: [
             "Hardware Bring-up & Debugging",
             "Python/Shell Test Automation",
@@ -248,7 +252,7 @@ const PROFESSIONAL: UniverseConfig = {
           color: "#00e0ff",
         },
         {
-          name: "FinalFusion — Maritime Domain Awareness",
+          name: "FinalFusion · Maritime Domain Awareness",
           category: "Multi-Modal Sensor Fusion",
           description:
             "Lead architect for a maritime-domain-awareness pipeline fusing Sentinel-1 SAR, Sentinel-2 optical, AIS, AMSR2, RADARSAT-1, and OSINT inputs. Hybrid classical + learned fusion with explainability hooks aligned to IEEE 7001 transparency requirements. Submission to DND IDEaS CFP6 Challenge 13.",
@@ -284,17 +288,17 @@ const PROFESSIONAL: UniverseConfig = {
       bump: 0,
       shape: "capsule",
       name: "Self-Hack",
-      description: "Apps in progress. Tech as a layer between us and our biology — body, attention, sleep.",
+      description: "Apps in progress. Tech as a layer between us and our biology: body, attention, sleep.",
       // Accent for orbit trail / tags / hover. Pill's two halves (red top,
       // yellow bottom) are hardcoded in the "pill" shader case.
       color: "#dc2626",
       tags: ["Mobile", "Self-Optimization", "Kotlin", "In Progress"],
       landmarks: [
         {
-          name: "Redline — Voice-Coached Fitness",
+          name: "Redline · Voice-Coached Fitness",
           category: "Body / Mobile",
           description:
-            "Android fitness tracker with live voice coaching during workouts — tells you when you're slowing, when to push, when to rest. Built on Jetpack Compose + Hilt + Room. The point: turn the workout phone into a coach, not a screen.",
+            "Android fitness tracker with live voice coaching during workouts. Tells you when you're slowing, when to push, when to rest. Built on Jetpack Compose + Hilt + Room. The point: turn the workout phone into a coach, not a screen.",
           technologies: [
             "Kotlin",
             "Jetpack Compose",
@@ -306,10 +310,10 @@ const PROFESSIONAL: UniverseConfig = {
           color: "#c8ff40",
         },
         {
-          name: "Reel_block — Reclaim Your Attention",
+          name: "Reel_block · Reclaim Your Attention",
           category: "Attention / Mobile",
           description:
-            "Android Accessibility Service that intercepts Instagram Reels (and other doom-scroll surfaces) — kills the infinite-scroll loop without forcing you to delete the app. Built so the apps that hijack your nervous system give it back when you ask them to.",
+            "Android Accessibility Service that intercepts Instagram Reels (and other doom-scroll surfaces) and kills the infinite-scroll loop without forcing you to delete the app. Built so the apps that hijack your nervous system give it back when you ask them to.",
           technologies: [
             "Kotlin",
             "Accessibility Service",
@@ -320,10 +324,10 @@ const PROFESSIONAL: UniverseConfig = {
           color: "#a8e828",
         },
         {
-          name: "Lucid — Smart Wake (in design)",
+          name: "Lucid · Smart Wake (in design)",
           category: "Sleep / Wearables",
           description:
-            "Alarm that doesn't just hit you with a noise at a fixed time. Reads heart-rate variability + motion from a watch to estimate sleep stage, then triggers in the next light-REM window — so you surface naturally rather than getting cortisol-slapped out of deep sleep. Working name; rename in lib/constants.ts.",
+            "Alarm that doesn't just hit you with a noise at a fixed time. Reads heart-rate variability + motion from a watch to estimate sleep stage, then triggers in the next light-REM window, so you surface naturally rather than getting cortisol-slapped out of deep sleep. Working name; rename in lib/constants.ts.",
           technologies: [
             "WearOS · watch HRV",
             "REM-stage estimation",
@@ -337,7 +341,7 @@ const PROFESSIONAL: UniverseConfig = {
           name: "What I'm Hacking",
           category: "Thesis",
           description:
-            "Three apps, one goal: tech as a deliberate layer between us and our biology. Not to escape it, but to relate to it on better terms. Body coaching, attention reclamation, and sleep-cycle alignment all aim at the same target — making the human stack more humane to live inside.",
+            "Three apps, one goal: tech as a deliberate layer between us and our biology. Not to escape it, but to relate to it on better terms. Body coaching, attention reclamation, and sleep-cycle alignment all aim at the same target: making the human stack more humane to live inside.",
           technologies: [
             "self as platform",
             "tech as scaffold",
@@ -352,7 +356,7 @@ const PROFESSIONAL: UniverseConfig = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PERSONAL universe — the mirror side. Content here is placeholder; swap in
+// PERSONAL universe: the mirror side. Content here is placeholder; swap in
 // real items when ready. The shape and visuals are wired up; the words aren't.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -372,39 +376,51 @@ const PERSONAL: UniverseConfig = {
       tilt: 0.10,
       bump: 0.05,
       name: "Music",
-      description: "Sounds I keep returning to. Mixes, playlists, listening lives.",
+      description: "Connection, euphoria, culture, and the sounds that make me feel alive.",
       color: "#ff66cc",
       tags: ["Mixing", "DJing", "Listening", "Producing"],
       landmarks: [
         {
-          name: "mixSESH — DJ Mix Series",
-          category: "Original Mixes",
+          name: "euphoriphilia",
+          category: "Playlist",
           description:
-            "Long-form mix sessions that stitch together genres and moods into one continuous listen — opening track sets the tone, last track is the comedown. Five mixes so far on Spotify (mixSESH 1 → 5), with the longer cuts also on SoundCloud. Click below to drop into mixSESH 5; older sessions are linked from my profile.",
-          technologies: [
-            "mixSESH 1 — open.spotify.com/playlist/0QUZYcvaSVXzFe4WHB6mPq",
-            "mixSESH 2 — open.spotify.com/playlist/10ugI5sIchfeTM00jXOhgZ",
-            "mixSESH 3 — open.spotify.com/playlist/0QUZYcvaSVXzFe4WHB6mPq",
-            "mixSESH 4 — open.spotify.com/playlist/5DSAHSyD0GteGcVLFWoyuM",
-            "mixSESH 5 — latest",
-          ],
+            "My main playlist, named around the love of euphoria. Not just happiness in the simple sense, but that shared, overflowing feeling where your first instinct is to give it to someone else. It lives somewhere between bliss, melancholy, chaos, release, and the small utopian hope that joy is supposed to be shared.",
+          technologies: ["Spotify", "playlist", "euphoria", "always growing"],
           color: "#ff66cc",
-          link: "https://open.spotify.com/playlist/62xKFqjWWNyEAR770x8mTk",
+          link: "https://open.spotify.com/playlist/2FQxHlFhPRnHfHnCC9uPF5",
         },
         {
-          name: "SoundCloud — Long-form Sets",
-          category: "DJ Sets & Edits",
+          name: "SoundCloud",
+          category: "DJ sets & edits",
           description:
-            "Where the longer, looser stuff lives. Continuous mixes recorded in single sessions — DJ sets, house experiments, edits that aren't streaming-friendly. (Customize this paragraph with the names of your favourite uploaded sets.)",
-          technologies: ["SoundCloud", "DJ Sets", "Continuous Mixes"],
+            "Where the longer, looser experiments live. Mixing, DJing, and producing feel like capturing a feeling while it is still moving: bliss, therapy, dissociation, harmony. The technical side matters too, waves and frequencies and patterns, but it does not kill the magic. It makes the magic stranger. A few sets I'm proud of:",
+          technologies: ["SoundCloud", "DJ sets", "continuous mixes"],
           color: "#ff80b8",
           link: "https://soundcloud.com/personesque-bobensque",
+          links: [
+            {
+              label: "Dopamine Kumo Mix",
+              url: "https://soundcloud.com/personesque-bobensque/dopamine-kumo-mix",
+            },
+            {
+              label: "FEEL IT CHAOS X BREATHE",
+              url: "https://soundcloud.com/personesque-bobensque/feel-it-chaos-x-breathe",
+            },
+            {
+              label: "hardcore sirdsapes x stop scaring the hoes",
+              url: "https://soundcloud.com/personesque-bobensque/hardcore-sirdsapes-x-stop-scaring-the-hoes",
+            },
+            {
+              label: "richasstaxi",
+              url: "https://soundcloud.com/personesque-bobensque/richaxxtaxi",
+            },
+          ],
         },
         {
           name: "Currently Spinning",
-          category: "Artists in rotation",
+          category: "On rotation",
           description:
-            "The names I've been deep on lately. The list shifts every few weeks but these are the ones I keep returning to — across electronica, experimental hip hop, hyperpop, drain gang, IDM, ambient. English, French, Slavic, German, Arabic — anything that carves out its own emotional space.",
+            "The artists I've been deep on lately. It shifts every few weeks, but the thread is usually the same: sounds that feel new, emotional, synthetic, warped, or strangely human. Music has always been how I reached people and cultures I would not have accessed otherwise. English, French, Slavic, German, Arabic. If it hits, it hits.",
           technologies: [
             "Brutalismus 3000",
             "Autechre",
@@ -426,7 +442,7 @@ const PERSONAL: UniverseConfig = {
           name: "Genre Atlas",
           category: "What I tune into",
           description:
-            "A wide net. Anything that feels new or unguarded — electronic and experimental are the centre of gravity, but the outer edges keep moving. Mostly English, French, Slavic, German, and Arabic-language tracks.",
+            "A wide net, but not random. Electronic and experimental are the center of gravity because they feel like the future arriving through the body. Hyperpop, gabber, IDM, drain gang, ambient, rap, breakbeat, trance, glitch, and the edges in between. I like when a sound is unguarded enough to make me curious.",
           technologies: [
             "electro · hyperpop",
             "techno · gabber",
@@ -452,7 +468,7 @@ const PERSONAL: UniverseConfig = {
           name: "What music means to me",
           category: "Personal note",
           description:
-            "MUSIC IS EVERYTHING. Music is the great connector — people from different cultures, languages, and walks of life can all come along and catch a vibe, catch a frequency, syncopate, be on the same wave. It's a reminder of the basic beautiful resonance that connects us all. Music is a feeling — captured in this eternal bubble that's replayable and morphable. DJing and mixing and producing is taking that feeling and morphing it into whatever you'd like. I genuinely love music as a source of therapy but also as a source of pure joy. Euphoria. Raving puts people into this liminal space that's so beautiful. Reading \"Raving\" by McKenzie Wark changed my life — it helped me explore my feelings of hedonism and lostness more deeply, and validated so many of my emotions.",
+            "Music is the great connector. It made me feel less alone: sharing songs with close friends, hearing records from Marco's massive vinyl collection, finding strangers through electro-pop, playing tracks out loud, or sitting alone in a dark room and listening to To Pimp a Butterfly from beginning to end. Raving gave me community, then taught me what parts of that world I had outgrown. It helped me understand hedonism and lostness by going through them, not just thinking about them. I found myself through chaos, and music is still the cleanest way I know to turn that chaos into connection.",
           technologies: [
             "the great connector",
             "catch a vibe",
@@ -461,7 +477,7 @@ const PERSONAL: UniverseConfig = {
             "DJ · mix · morph",
             "therapy · joy · euphoria",
             "liminal raving",
-            "Raving — McKenzie Wark",
+            "Raving · McKenzie Wark",
           ],
           color: "#ffd0f0",
         },
@@ -477,21 +493,21 @@ const PERSONAL: UniverseConfig = {
       bump: 0.07,
       shape: "icosahedron",
       name: "Philosophy",
-      description: "Frameworks, questions, and thinkers I'm working with.",
+      description: "What makes me tick: uncertainty, consciousness, technology, and the urge to connect people.",
       color: "#a070ff",
       tags: ["Synthesis", "Spectrum", "Order", "Bridging"],
       landmarks: [
         {
-          name: "The Big Questions",
+          name: "The Question Underneath",
           category: "What I keep coming back to",
           description:
-            "Five interlocking questions that pull at most of my thinking. How do we organize better as a species, holistically? How do we delete the barriers between us? How do we use tech to gamify, surpass, and hack our biology? What system lies after capitalism — it's done us good and bad and feels near the end of its cycle. And what role does AI play in whatever world order comes next?",
+            "This planet is where I try to explain the question under almost everything I care about: how do I balance the animal part of me that wants happiness, food, touch, pleasure, play, and comfort with the conscious part that wants to fix everything, put people together, and be good? There is no final answer. It changes by person, moment, body, context, and stage of life. The only certainty is how uncertain things are.",
           technologies: [
-            "species-scale coordination",
-            "dissolving barriers",
-            "biology hacking",
-            "post-capitalism",
-            "AI as catalyst",
+            "animal self",
+            "conscious self",
+            "uncertainty",
+            "balance",
+            "being good",
           ],
           color: "#a070ff",
         },
@@ -499,16 +515,14 @@ const PERSONAL: UniverseConfig = {
           name: "How I Frame It",
           category: "Operating principles",
           description:
-            "Everything is a spectrum — but that doesn't mean frameworks are useless. Quite the opposite: because there are no black-and-white answers, all we DO have is ideologies and patterns. I don't believe in traditional hierarchy, but I do believe in order. Spiral dynamics + the pendulum swinging back and forth feels like the right shape for civilizational change. I fuck with absurdism, with non-duality, with the theory of unified consciousness, with quantum biomechanical models of the brain. I've gone through Peterson, Islam, Buddhism, Sufism — outgrown most as singular answers, kept the parts that hold up.",
+            "I used to get more attached to feeling like I had found the truth. Now I am more accepting that I probably have not. Everything is circular, everything is a spectrum, and that does not make frameworks useless. It makes them more important, because patterns are all we have when clean answers disappear. Order does not mean hierarchy to me. Things can unfold chronologically without becoming morally superior to what came before.",
           technologies: [
             "spectrum thinking",
             "spiral dynamics",
             "pendulum theory",
             "order, not hierarchy",
-            "absurdism",
-            "non-duality",
-            "unified consciousness",
-            "Sufi / Buddhist threads",
+            "circular change",
+            "uncertainty",
           ],
           color: "#c0a0ff",
         },
@@ -516,7 +530,7 @@ const PERSONAL: UniverseConfig = {
           name: "Two-Pronged Mental Health",
           category: "Where I land hardest",
           description:
-            "Mental health is double-pronged. It's not JUST the damn phone — but it's also not just \"take care of your nihilistic depressing thoughts.\" If you're wrecking your body with under- or over-sleep, disordered eating, no movement, cortisol-spiking workouts, drugs, self-medication — no amount of mindfulness fixes that. And if you're physically dialed but never doing the spiritual work — meditating, finding yourself, building morality from first principles, addressing your deep biases — you're still stuck. Balance both. Get your neurochemistry right so the brain isn't fighting an uphill battle to land on the right thoughts. Then do the inner work so it has somewhere to land.",
+            "Mental health is double pronged. It is not just the phone, but it is also not just your nihilistic thoughts. If you wreck your body with bad sleep, disordered eating, no movement, burnout workouts, drugs, or self-medication, mindfulness alone cannot carry you. If you optimize the body but never do the inner work, you are still stuck. Get the neurochemistry right so the brain is not fighting an uphill battle, then do the spiritual work: meditation, self-knowledge, first-principles morality, and bias awareness.",
           technologies: [
             "neurochemistry",
             "spiritual work",
@@ -530,37 +544,29 @@ const PERSONAL: UniverseConfig = {
           name: "What I'm Building Toward",
           category: "The project",
           description:
-            "I want to bridge the gap between humans. I want to make social media SOCIAL AGAIN. I want to use tech to get rid of the mundane and focus on getting people to see through each other's differences. I want to make knowledge more easily accessible — make humans capable of acquiring the most accurate up-to-date research without needing to be deeply research-literate. And I keep coming back to E.O. Wilson's line: \"We have Paleolithic emotions, medieval institutions, and god-like technology.\" That's the gap to close. Take care of the Paleolithic emotions; understand they don't always align with logic; learn to feel them and be in the moment without being taken over — or take them over. Then upgrade the institutions. The tech is already further than we are.",
+            "A lot of why I went into computer engineering is here. I am fascinated by tech because it can either extract attention from people or help them find each other. Social media feels broken because it was optimized to retain attention, not create connection. It amplifies fake highlights, anxiety, comparison, rage, misinformation, and shallow interaction. I want to make social media social again: real community, shared interests, friendship, knowledge access, and technology that removes the mundane so people can actually see each other.",
           technologies: [
             "bridge humans",
-            "social media → social",
+            "social media to social",
+            "real community",
             "knowledge accessibility",
-            "Paleolithic / medieval / god-like (Wilson)",
-            "mirror-karma",
+            "attention vs connection",
           ],
           color: "#c8a0ff",
         },
         {
-          name: "Adjacent Minds",
-          category: "Thinkers in the same territory",
+          name: "What I Keep",
+          category: "Spirituality without inherited cruelty",
           description:
-            "People I've been deep on or that map onto where I've landed. I outgrew most of the canonical frameworks but these five are doing rigorous work where the canon waved its hands. Each one fills in part of the picture Peterson was reaching for but missed.",
+            "I reject traditionalism when it means clinging to old things only because they are old, but I understand why humans preserve old patterns. Sometimes it slows down the loss of things that still work. From religion and spirituality, I keep meditation, group meditation, kindness, ego dissolution, charity, cleanliness, purity of soul, solidarity, gentleness toward the innocent and weak, and hating the action without hating the person. I reject the inherited cruelty: sexism, racism, slavery, and anything that asks people to worship harm just because it is old.",
           technologies: [
-            "John Vervaeke — meaning crisis, 4E cognition",
-            "Daniel Schmachtenberger — civilizational coordination",
-            "Iain McGilchrist — divided brain, science + mysticism",
-            "Bernardo Kastrup — analytic idealism, consciousness as ground",
-            "E.O. Wilson — Consilience; the Paleolithic / medieval / god-like quote",
+            "meditation",
+            "ego dissolution",
+            "charity",
+            "solidarity",
+            "gentleness",
           ],
           color: "#b890ff",
-        },
-        {
-          name: "What philosophy means to me",
-          category: "Personal note",
-          description:
-            "Placeholder — write this in your own voice when you're ready. Why you do it, what it gives back, what it costs. (Edit in lib/constants.ts.)",
-          technologies: ["Personal", "Practice"],
-          color: "#d8b0ff",
         },
       ],
     },
@@ -574,7 +580,7 @@ const PERSONAL: UniverseConfig = {
       bump: 0.04,
       shape: "sphere",
       name: "Nyx",
-      description: "My cat. The most important member of the household.",
+      description: "My small chaotic night creature. Docile, dramatic, and somehow in charge.",
       color: "#1a1a22",
       tags: ["Cat", "Chaos", "Night", "Boss"],
       landmarks: [
@@ -582,25 +588,27 @@ const PERSONAL: UniverseConfig = {
           name: "Why I Named Her Nyx",
           category: "Origin",
           description:
-            "Nyx is the primordial Greek deity of night — daughter of Chaos. Felt right for my chaotic little cat creature pet. She's small and dark and full of mystery and contained cosmic disorder, exactly like her namesake.",
+            "Nyx is the primordial Greek deity of night, daughter of Chaos. The name felt right immediately: small, dark, mysterious, and full of contained cosmic disorder. She is docile most of the time, but the night-creature energy is real.",
           technologies: ["Greek mythology", "primordial deity", "daughter of Chaos", "the night"],
           color: "#7a6abf",
+          images: [
+            "/nyx/image-1780562125160.webp",
+            "/nyx/image-1780562057110.webp",
+            "/nyx/image-1780562088979.webp",
+          ],
         },
         {
-          name: "About Nyx",
-          category: "The boss",
+          name: "Gallery",
+          category: "The boss in pictures",
           description:
-            "Placeholder — Nyx's full story: when she joined the family, how she looks, her signature moves, favourite spots, the small rituals only she gets. (Edit this in lib/constants.ts; pics to be added.)",
-          technologies: ["cuddles", "zoomies", "supervisor", "tiny goblin"],
+            "Belly-out lounging, long dramatic stretches, constant eating, green-eyed stares, tongue-out bleps, full loaf mode, and sudden suspicion if she smells another cat. The whole Nyx experience.",
+          technologies: ["chaos", "blep", "loaf", "bite", "kitten"],
           color: "#b0b0b0",
-        },
-        {
-          name: "Daily Patrol Route",
-          category: "Routines",
-          description:
-            "Placeholder — the windowsill schedule, treat times, where Nyx insists on sleeping, the corners she defends. (Edit this in lib/constants.ts.)",
-          technologies: ["window", "fridge", "lap", "ankles"],
-          color: "#d0d0d0",
+          images: [
+            "/nyx/image-1780562099824.webp",
+            "/nyx/image-1780562108138.webp",
+            "/nyx/image-1780562117202.webp",
+          ],
         },
       ],
     },
@@ -614,16 +622,16 @@ const PERSONAL: UniverseConfig = {
       bump: 0.04,
       shape: "torus",
       name: "Films & Shows",
-      description: "Stories that stuck. Watch diary lives on Letterboxd.",
+      description: "Stories that make me think, feel, and stare at the wall after.",
       color: "#ffaa55",
       tags: ["Film", "Letterboxd", "Watching", "Reviews"],
       landmarks: [
         {
           name: "Letterboxd · @madirewolf",
-          category: "Watch Diary",
+          category: "Watch diary",
           description:
-            "Where I log everything I watch — ratings, reviews, lists. The four films pinned to the top of the profile are my all-time favourites; the diary is the live feed of what I'm working through. Click below to land on the profile.",
-          technologies: ["Letterboxd", "Diary", "Reviews", "Lists"],
+            "Where I log what I am working through: ratings, reviews, lists, rewatches, and whatever recently caught me off guard. The diary is less about completionism and more about leaving a trail of what I was thinking about when I watched it.",
+          technologies: ["Letterboxd", "diary", "reviews", "lists"],
           color: "#ffaa55",
           link: "https://letterboxd.com/madirewolf/",
         },
@@ -631,7 +639,7 @@ const PERSONAL: UniverseConfig = {
           name: "Favourite Directors",
           category: "Whose work I keep coming back to",
           description:
-            "Five directors whose filmographies I treat as continuing studies — each one builds a coherent worldview across decades. I'll watch anything they make, and rewatch the canon.",
+            "Directors I keep returning to because their films feel built from a worldview, not just a plot. Nolan for structure and moral pressure, Villeneuve for scale and dread, Anderson for constructed tenderness, Tarkovsky for spiritual time, Tarantino for style and tension.",
           technologies: [
             "Christopher Nolan",
             "Denis Villeneuve",
@@ -645,7 +653,7 @@ const PERSONAL: UniverseConfig = {
           name: "The Vault",
           category: "Films that stuck",
           description:
-            "Some hit on first watch then deeper every rewatch (Fight Club, Whiplash, Memento, The Prestige). Some encode a feeling so cleanly they can't be undone (Manchester by the Sea, The Lighthouse, Nocturnal Animals). Some are pure aesthetic and meaning (Blade Runner 2049, Paprika, Coraline, Fantastic Mr Fox). All earned their place.",
+            "The films that stay with me usually have a scene where the floor drops out: Fight Club, Incendies, Memento, Prisoners, A Beautiful Mind, Shutter Island. I like twists when they are not cheap shock, but a new way of understanding the whole story. The best scenes feel like two people, or two versions of one person, acting out a much deeper philosophy.",
           technologies: [
             "Fight Club",
             "Whiplash",
@@ -669,6 +677,8 @@ const PERSONAL: UniverseConfig = {
             "Fantastic Mr Fox",
             "Matilda",
             "The Imitation Game",
+            "A Beautiful Mind",
+            "Shutter Island",
           ],
           color: "#ffc080",
         },
@@ -676,12 +686,15 @@ const PERSONAL: UniverseConfig = {
           name: "TV & Limited Series",
           category: "Long-form storytelling",
           description:
-            "Series where the long format isn't padding — it's necessary architecture. Sherlock and Chernobyl prove the limited-series form can exceed feature films. Game of Thrones for the world-building and the descent. Adventure Time for the slow reveal that it was a serious work all along.",
+            "Different formats hold different parts of me. Game of Thrones for world-building and collapse. Daredevil for moral grit. Adventure Time and Gumball for the cartoon worlds that shaped my younger brain. Tokyo Ghoul for that darker anime register. Sherlock and Chernobyl for proof that a limited series can hit with the force of film.",
           technologies: [
             "Sherlock (BBC miniseries)",
             "Chernobyl (HBO)",
             "Game of Thrones",
             "Adventure Time",
+            "Daredevil",
+            "Tokyo Ghoul",
+            "Gumball",
           ],
           color: "#ffb060",
         },
@@ -689,16 +702,16 @@ const PERSONAL: UniverseConfig = {
           name: "What film means to me",
           category: "Personal note",
           description:
-            "Film, like music, is a medium of communicating. Movies are whatever the maker makes of them. Movies are also whatever you, the audience, make of them. Movies like Samsara are a whole meditation experience. Movies like Lynch's are a trippy experience that'll leave you doubting reality. Movies like Interstellar will leave you wondering what you take for granted. Movies like Memento or Shutter Island are a journey through a mental state. Movies like Prisoners will have you questioning your morality. Movies like Incendies will have you in utter shock. Movies like Arrival will have you questioning what language means. I love movies that move. Just like I love music that moves. If you can summon an emotion in me, then I enjoy you.",
+            "Film, like music, is communication. I love moral dilemmas, gray areas, multidisciplinary stories, science that becomes philosophy, and art that makes me feel something before I can explain it. Arrival stayed with me because it treats language as a force that shapes reality, empathy, and even moral imagination. Samsara feels like a meditation. Prisoners asks what morality becomes under pressure. Incendies leaves you in shock. I like work with depth: make me think, make me feel, then make me reconsider what I thought I understood.",
           technologies: [
             "communication",
-            "Samsara — meditation",
-            "Lynch — trippy",
-            "Interstellar — what you take for granted",
-            "Memento / Shutter Island — mental state",
-            "Prisoners — morality",
-            "Incendies — shock",
-            "Arrival — language",
+            "Samsara · meditation",
+            "Lynch · trippy",
+            "Interstellar · what you take for granted",
+            "Memento / Shutter Island · mental state",
+            "Prisoners · morality",
+            "Incendies · shock",
+            "Arrival · language",
             "movies that move",
           ],
           color: "#ffe0a0",
@@ -714,15 +727,15 @@ const PERSONAL: UniverseConfig = {
       tilt: 0.06,
       bump: 0.13,
       name: "Nature",
-      description: "Vastness, time, and the things tech shields us from.",
+      description: "Vastness, survival, ruins, and the moments that make me feel fully alive.",
       color: "#80e060",
       tags: ["Stargazing", "Ruins", "Desert", "Wilderness"],
       landmarks: [
         {
-          name: "Wadi Rum — Stars I Couldn't See Before",
+          name: "Wadi Rum, Stars I Couldn't See Before",
           category: "Jordan",
           description:
-            "I'll never forget stargazing in Wadi Rum. I saw the infinite amount of stars that had always been right there, my whole life — yet I could never see them until that night when there was finally no light pollution. It made me reflect on tech and the role it plays in our lives. How we're, in many ways, controlled by our environment and shielded so heavily that the actual sky becomes invisible. Take the shielding away and the universe is just there.",
+            "Around 1 AM in Wadi Rum, I was lying on the red sand with my family, looking at stars I did not know a naked eye could see. It looked like something only a professional long-exposure camera could capture, but it was just there above us. Falling stars kept cutting across the sky every few seconds or minutes. I felt blissful, euphoric, and completely mind-blown by how much had always been there, hidden by light.",
           technologies: [
             "Wadi Rum",
             "Jordan",
@@ -733,10 +746,10 @@ const PERSONAL: UniverseConfig = {
           color: "#80e060",
         },
         {
-          name: "Old Worlds — Petra, Dead Sea, Bosphorus, Levant",
+          name: "Old Worlds: Petra, Dead Sea, Bosphorus, Levant",
           category: "Civilizational time",
           description:
-            "Petra and the Dead Sea — every step, a new civilization that used to be there, died, disappeared, and now all that remains are their homes etched into stone mountains. The fields of olive trees stretching across the Levant. The Strait of Istanbul — the Bosphorus — glistening under the sun, so many people died for it. Something in me yearns for archaeology and ruins of the past. As stereotypical as that is.",
+            "Petra, the Dead Sea, the olive fields of the Levant, the Bosphorus glistening under the sun. I love archaeology and ruins because they make me feel small inside history. They are beauty, mystery, proof that everything ends, and a way to touch the past. Every carved stone and old city feels like a reminder that entire worlds can vanish and still leave a shape behind.",
           technologies: [
             "Petra",
             "Dead Sea",
@@ -747,10 +760,10 @@ const PERSONAL: UniverseConfig = {
           color: "#a0ff80",
         },
         {
-          name: "Home — Persian Gulf, Kuwaiti Desert",
+          name: "Home: Persian Gulf, Kuwaiti Desert",
           category: "Childhood vastness",
           description:
-            "I grew up minutes from the Persian Gulf — that vast ocean a short walk from my door. Then there's the Kuwaiti desert: BBQs out there, infinite sands going on forever, ATVing across the dunes. Best memory of all: dragging a telescope into the middle of the desert with a friend in the middle of the night and seeing Jupiter and Saturn. The desert + the sky, no shielding, just looking up.",
+            "Kuwait nature is harsh, lonely, solemn, melancholic, and still beautiful. I grew up a few minutes from the Persian Gulf, with the beach always nearby, and the desert becomes beautiful in winter: BBQs, infinite sand, ATVing, and telescope nights looking for Jupiter and Saturn. It also carries survival for me: heat, scarcity, mud shacks, refugee journeys, my grandfather arriving by boat, and the strange fact that people survive anyway.",
           technologies: [
             "Persian Gulf",
             "Kuwait desert",
@@ -762,10 +775,10 @@ const PERSONAL: UniverseConfig = {
           color: "#90e890",
         },
         {
-          name: "Canada — Backcountry, Canoes, Cottages",
+          name: "Canada: Backcountry, Canoes, Cottages",
           category: "Canada",
           description:
-            "First camping trip in Canada was backcountry camping in Muskoka with friends — one of the most magical experiences of my life. Then canoeing through the Canadian nature for the first time. Getting rained on intensely on the docks and just laying there, taking it all in. Hiking through forests with friends near their cottages. Pure wilderness with no infrastructure between you and it. The trips you measure other trips against.",
+            "Canada gave me another kind of aliveness. My first backcountry camping trip in Muskoka with friends is still one of the most magical experiences of my life. Canoeing through Canadian nature, hiking through forests near cottages, and lying on docks while getting absolutely rained on all gave me that same feeling: nothing between me and the world, no interface, no shielding.",
           technologies: [
             "Muskoka backcountry",
             "canoeing",
@@ -779,7 +792,7 @@ const PERSONAL: UniverseConfig = {
           name: "What nature means to me",
           category: "Personal note",
           description:
-            "Genuinely nothing makes me feel as alive. Whether it's the stars in Wadi Rum, ruins in Petra, the Kuwaiti desert at night with a telescope, ATVing the dunes, canoeing through Canadian wilderness, hiking near a cottage, or just laying on a dock getting rained on — being near nature is the closest thing I get to being fully present. The meta-theme keeps showing up: light pollution as a metaphor for everything tech shields us from. Take away the shielding, look up, look back, and what was there the whole time is just there.",
+            "Genuinely nothing makes me feel as alive. The stars in Wadi Rum, the ruins in Petra, the Kuwaiti desert at night, ATVing the dunes, canoeing through Canadian wilderness, hiking near a cottage, or lying on a dock in the rain all point to the same thing. Nature makes me present by removing the filters. Light pollution is the obvious metaphor, but it applies to so much tech: take away the shielding, look up, and what was there the whole time is just there.",
           technologies: ["Aliveness", "Presence", "Vastness", "Time"],
           color: "#c0ffc0",
         },

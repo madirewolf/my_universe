@@ -1,17 +1,17 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useFrame } from "@react-three/fiber"
 import { Html } from "@react-three/drei"
 import * as THREE from "three"
 import type { Mesh } from "three"
-import type { Landmark } from "@/lib/constants"
+import type { Landmark, Universe } from "@/lib/constants"
 
 const CRYSTAL_RADIUS = 2.6
 const HOLOGRAM_DISTANCE = 6.4
 
 // ─── Inline FBM noise ────────────────────────────────────────────────────────
-// Duplicates planet.tsx — small enough to keep close to the geometry it builds.
+// Duplicates planet.tsx, small enough to keep close to the geometry it builds.
 
 function hash3(x: number, y: number, z: number): number {
   const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453
@@ -72,24 +72,106 @@ function makeCrystalGeometry(radius: number, seed: number) {
 
 // ─── HologramCard: a single floating info card ──────────────────────────────
 
-type CardKind = "title" | "desc" | "tech" | "link"
+type CardKind = "title" | "desc" | "tech" | "link" | "images"
 
 interface HologramCardProps {
   position: [number, number, number]
   kind: CardKind
   landmark: Landmark
+  universe: Universe
 }
 
-function HologramCard({ position, kind, landmark }: HologramCardProps) {
-  const c = landmark.color
+function PrevNextBtns({
+  index,
+  total,
+  onPrev,
+  onNext,
+  color,
+}: {
+  index: number
+  total: number
+  onPrev: () => void
+  onNext: () => void
+  color: string
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+      <button
+        onClick={onPrev}
+        disabled={index === 0}
+        style={{
+          background: index === 0 ? "transparent" : `${color}25`,
+          border: `1px solid ${index === 0 ? "rgba(255,255,255,0.1)" : `${color}55`}`,
+          borderRadius: 6,
+          padding: "4px 10px",
+          color: index === 0 ? "rgba(255,255,255,0.25)" : color,
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: index === 0 ? "default" : "pointer",
+        }}
+      >
+        &larr;
+      </button>
+      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
+        {index + 1} / {total}
+      </span>
+      <button
+        onClick={onNext}
+        disabled={index === total - 1}
+        style={{
+          background: index === total - 1 ? "transparent" : `${color}25`,
+          border: `1px solid ${index === total - 1 ? "rgba(255,255,255,0.1)" : `${color}55`}`,
+          borderRadius: 6,
+          padding: "4px 10px",
+          color: index === total - 1 ? "rgba(255,255,255,0.25)" : color,
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: index === total - 1 ? "default" : "pointer",
+        }}
+      >
+        &rarr;
+      </button>
+    </div>
+  )
+}
 
-  // Common card skeleton — glass panel with accent line + eyebrow + body
-  const eyebrowMap: Record<CardKind, string> = {
-    title: "Project",
-    desc: "About",
-    tech: "Tech Stack",
-    link: "External",
+// Split long prose into pages at sentence boundaries, each under maxChars.
+// Keeps the floating card a fixed size; long descriptions paginate instead
+// of overflowing or scrolling.
+function paginateText(text: string, maxChars = 300): string[] {
+  const sentences = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text]
+  const pages: string[] = []
+  let cur = ""
+  for (const s of sentences) {
+    if (cur.length + s.length > maxChars && cur.length > 0) {
+      pages.push(cur.trim())
+      cur = s
+    } else {
+      cur += s
+    }
   }
+  if (cur.trim()) pages.push(cur.trim())
+  return pages.length > 0 ? pages : [text]
+}
+
+function HologramCard({ position, kind, landmark, universe }: HologramCardProps) {
+  const c = landmark.color
+  const [imgIdx, setImgIdx] = useState(0)
+  const [descIdx, setDescIdx] = useState(0)
+  // Reset indices when landmark changes
+  useEffect(() => {
+    setImgIdx(0)
+    setDescIdx(0)
+  }, [landmark])
+
+  const descPages = useMemo(() => paginateText(landmark.description), [landmark.description])
+
+  // Professional universe uses technical labels; personal universe uses
+  // warmer, less corporate ones.
+  const eyebrowMap: Record<CardKind, string> =
+    universe === "professional"
+      ? { title: "Project", desc: "About", tech: "Tech Stack", link: "External", images: "Gallery" }
+      : { title: "Spotlight", desc: "Story", tech: "Vibes", link: "Listen / Watch", images: "Gallery" }
   const eyebrow = eyebrowMap[kind]
 
   return (
@@ -100,13 +182,18 @@ function HologramCard({ position, kind, landmark }: HologramCardProps) {
       sprite
       pointerEvents="auto"
       style={{
-        pointerEvents: kind === "link" ? "auto" : "none",
+        pointerEvents:
+          kind === "link" ||
+          kind === "images" ||
+          (kind === "desc" && descPages.length > 1)
+            ? "auto"
+            : "none",
         userSelect: "none",
       }}
     >
       <div
         style={{
-          width: 230,
+          width: 270,
           padding: 16,
           background: "rgba(4, 6, 20, 0.7)",
           backdropFilter: "blur(14px)",
@@ -149,16 +236,25 @@ function HologramCard({ position, kind, landmark }: HologramCardProps) {
         )}
 
         {kind === "desc" && (
-          <div
-            style={{
-              fontSize: 11,
-              lineHeight: 1.55,
-              color: "rgba(255,255,255,0.78)",
-              maxHeight: 180,
-              overflowY: "auto",
-            }}
-          >
-            {landmark.description}
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                lineHeight: 1.55,
+                color: "rgba(255,255,255,0.78)",
+              }}
+            >
+              {descPages[Math.min(descIdx, descPages.length - 1)]}
+            </div>
+            {descPages.length > 1 && (
+              <PrevNextBtns
+                index={descIdx}
+                total={descPages.length}
+                onPrev={() => setDescIdx((i) => Math.max(0, i - 1))}
+                onNext={() => setDescIdx((i) => Math.min(descPages.length - 1, i + 1))}
+                color={c}
+              />
+            )}
           </div>
         )}
 
@@ -183,34 +279,92 @@ function HologramCard({ position, kind, landmark }: HologramCardProps) {
           </div>
         )}
 
-        {kind === "link" && landmark.link && (
-          <a
-            href={landmark.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 11,
-              padding: "8px 14px",
-              background: `${c}25`,
-              border: `1px solid ${c}55`,
-              borderRadius: 7,
-              color: c,
-              textDecoration: "none",
-              fontWeight: 600,
-              letterSpacing: "0.05em",
-            }}
-            onMouseEnter={e => {
-              ;(e.currentTarget as HTMLElement).style.background = `${c}40`
-            }}
-            onMouseLeave={e => {
-              ;(e.currentTarget as HTMLElement).style.background = `${c}25`
-            }}
-          >
-            View Project →
-          </a>
+        {kind === "link" && (landmark.link || landmark.links) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {landmark.link && (
+              <a
+                href={landmark.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  fontSize: 11,
+                  padding: "8px 14px",
+                  background: `${c}25`,
+                  border: `1px solid ${c}55`,
+                  borderRadius: 7,
+                  color: c,
+                  textDecoration: "none",
+                  fontWeight: 600,
+                  letterSpacing: "0.05em",
+                }}
+                onMouseEnter={e => {
+                  ;(e.currentTarget as HTMLElement).style.background = `${c}40`
+                }}
+                onMouseLeave={e => {
+                  ;(e.currentTarget as HTMLElement).style.background = `${c}25`
+                }}
+              >
+                {universe === "professional" ? "View Project →" : "Open →"}
+              </a>
+            )}
+            {landmark.links?.map((l) => (
+              <a
+                key={l.url}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  fontSize: 11,
+                  padding: "7px 12px",
+                  background: `${c}15`,
+                  border: `1px solid ${c}40`,
+                  borderRadius: 7,
+                  color: `${c}ee`,
+                  textDecoration: "none",
+                  fontWeight: 500,
+                  lineHeight: 1.3,
+                }}
+                onMouseEnter={e => {
+                  ;(e.currentTarget as HTMLElement).style.background = `${c}30`
+                }}
+                onMouseLeave={e => {
+                  ;(e.currentTarget as HTMLElement).style.background = `${c}15`
+                }}
+              >
+                {l.label}
+              </a>
+            ))}
+          </div>
+        )}
+
+        {kind === "images" && landmark.images && landmark.images.length > 0 && (
+          <div>
+            <img
+              src={landmark.images[imgIdx]}
+              alt={`${landmark.name} ${imgIdx + 1}`}
+              style={{
+                width: "100%",
+                height: 160,
+                objectFit: "cover",
+                borderRadius: 8,
+                border: `1px solid ${c}40`,
+              }}
+            />
+            {landmark.images.length > 1 && (
+              <PrevNextBtns
+                index={imgIdx}
+                total={landmark.images.length}
+                onPrev={() => setImgIdx((i) => Math.max(0, i - 1))}
+                onNext={() => setImgIdx((i) => Math.min(landmark.images!.length - 1, i + 1))}
+                color={c}
+              />
+            )}
+          </div>
         )}
       </div>
     </Html>
@@ -222,9 +376,10 @@ function HologramCard({ position, kind, landmark }: HologramCardProps) {
 interface MoonViewProps {
   landmark: Landmark
   seed: number
+  universe: Universe
 }
 
-export default function MoonView({ landmark, seed }: MoonViewProps) {
+export default function MoonView({ landmark, seed, universe }: MoonViewProps) {
   const crystalRef = useRef<Mesh>(null)
   const innerRef = useRef<Mesh>(null)
   const haloRef = useRef<Mesh>(null)
@@ -250,13 +405,14 @@ export default function MoonView({ landmark, seed }: MoonViewProps) {
 
   const cards = useMemo(() => {
     const list: CardKind[] = ["title", "desc", "tech"]
-    if (landmark.link) list.push("link")
+    if (landmark.link || landmark.links) list.push("link")
+    if (landmark.images && landmark.images.length > 0) list.push("images")
     return list
   }, [landmark])
 
   return (
     <group>
-      {/* Crystal core — flat-shaded, faceted, slowly rotating */}
+      {/* Crystal core: flat-shaded, faceted, slowly rotating */}
       <mesh ref={crystalRef} geometry={crystalGeom}>
         <meshStandardMaterial
           color={landmark.color}
@@ -299,7 +455,7 @@ export default function MoonView({ landmark, seed }: MoonViewProps) {
         const z = Math.sin(angle) * HOLOGRAM_DISTANCE
         // Slight vertical offset based on kind so cards don't all sit on the equator
         const y = kind === "title" ? 0.6 : kind === "link" ? -0.6 : 0
-        return <HologramCard key={kind} position={[x, y, z]} kind={kind} landmark={landmark} />
+        return <HologramCard key={kind} position={[x, y, z]} kind={kind} landmark={landmark} universe={universe} />
       })}
 
       {/* Lighting */}

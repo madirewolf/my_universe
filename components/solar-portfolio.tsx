@@ -41,6 +41,7 @@ const ORIGIN = new THREE.Vector3(0, 0, 0)
 // from inside the core's icosahedron (radius 1.2). User wanted the camera
 // to get genuinely "right up to" the rift before the corridor takes over.
 const RIFT_NEAR_DIST = 0.4
+const RIFT_REVEAL_DIST = 7
 // Reused scratch Vector3 for the lookAt lerp — avoids per-frame allocations.
 const _lookAt = new THREE.Vector3()
 
@@ -138,10 +139,12 @@ function CameraController({
           stageStartPos.current = nearRift.clone()
         }
       } else if (sr.stage === "out") {
+        const revealRift = RIFT_WORLD_POS.clone().sub(
+          riftDir.multiplyScalar(RIFT_REVEAL_DIST),
+        )
         const k = easeInOutCubic(Math.min(t / RIFT_TIMING.OUT_DURATION, 1))
-        camera.position.lerpVectors(stageStartPos.current!, RIFT_OVERHEAD, k)
-        _lookAt.lerpVectors(RIFT_WORLD_POS, ORIGIN, k)
-        camera.lookAt(_lookAt)
+        camera.position.lerpVectors(stageStartPos.current!, revealRift, k)
+        camera.lookAt(RIFT_WORLD_POS)
 
         if (t >= RIFT_TIMING.OUT_DURATION) {
           sr.stage = "idle"
@@ -192,28 +195,49 @@ function CameraController({
  * before warm-up finishes, RiftCompileGate (below) acts as a backup
  * gate.
  */
-function ShaderWarmer() {
+function ShaderWarmer({
+  systemGroupRefs,
+}: {
+  systemGroupRefs: MutableRefObject<Record<Universe, THREE.Group | null>>
+}) {
   const { gl, scene, camera } = useThree()
   useEffect(() => {
+    const groups = Object.values(systemGroupRefs.current).filter(
+      (group): group is THREE.Group => group !== null,
+    )
+    const originalVisibility = groups.map((group) => group.visible)
+    const withAllSystemGroupsVisible = <T,>(fn: () => T): T => {
+      groups.forEach((group) => {
+        group.visible = true
+      })
+      try {
+        return fn()
+      } finally {
+        groups.forEach((group, index) => {
+          group.visible = originalVisibility[index]
+        })
+      }
+    }
+
     const compileAsync = (
       gl as unknown as {
         compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>
       }
     ).compileAsync
     if (typeof compileAsync === "function") {
-      compileAsync.call(gl, scene, camera).catch(() => {
+      withAllSystemGroupsVisible(() => compileAsync.call(gl, scene, camera)).catch(() => {
         /* swallow — three.js's program cache is the actual prize */
       })
     } else {
       try {
-        gl.compile(scene, camera)
+        withAllSystemGroupsVisible(() => gl.compile(scene, camera))
       } catch {
         /* ignore */
       }
     }
     // Run once on mount only — shader compile is one-shot per program.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [camera, gl, scene, systemGroupRefs])
   return null
 }
 
@@ -271,7 +295,11 @@ function RiftCompileGate({
       ).compileAsync
 
       const markReady = () => {
-        if (!cancelled) riftState.current.ready = true
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!cancelled) riftState.current.ready = true
+          })
+        })
       }
 
       if (typeof compileAsync === "function") {
@@ -321,6 +349,10 @@ export default function SolarPortfolio() {
     stage: "idle",
     stageStart: -1,
     ready: true,
+  })
+  const systemGroupRefs = useRef<Record<Universe, THREE.Group | null>>({
+    professional: null,
+    personal: null,
   })
   // Joystick velocity from the navigation dial (-1..1 each axis). When non-zero
   // a RAF loop integrates it into planetRotation for continuous rotation.
@@ -479,7 +511,13 @@ export default function SolarPortfolio() {
                 const cfg = UNIVERSE_CONFIG[u]
                 const isActive = u === universe
                 return (
-                  <group key={u} visible={isActive}>
+                  <group
+                    key={u}
+                    ref={(group) => {
+                      systemGroupRefs.current[u] = group
+                    }}
+                    visible={isActive}
+                  >
                     <SolarSystem
                       planets={cfg.planets}
                       sunVariant={cfg.sunVariant}
@@ -492,7 +530,7 @@ export default function SolarPortfolio() {
                   </group>
                 )
               })}
-              <ShaderWarmer />
+              <ShaderWarmer systemGroupRefs={systemGroupRefs} />
             </>
           )}
 
@@ -514,7 +552,7 @@ export default function SolarPortfolio() {
           )}
 
           {mode === "moon" && selectedLandmark && (
-            <MoonView landmark={selectedLandmark} seed={landmarkSeed} />
+            <MoonView landmark={selectedLandmark} seed={landmarkSeed} universe={universe} />
           )}
 
           {/* Rift transition — lightspeed corridor. Stage machine lives in

@@ -4,63 +4,48 @@ import { Volume2, VolumeX } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 interface BackgroundMusicProps {
-  /** URL of the audio file. Drop your file at /public/xtal.mp3 by default. */
   src?: string
-  /** 0 to 1 */
   volume?: number
-  /** Render the toggle button somewhere external instead of here. */
   hideToggle?: boolean
 }
 
-/**
- * Loops an ambient track in the background. Browsers block autoplay until the
- * user has interacted with the page, so we:
- *   1. Render the <audio> element pre-loaded but paused
- *   2. On first ANY click/keypress anywhere on the page, attempt play()
- *   3. Render a Volume2/VolumeX toggle button so the user can mute/unmute
- *
- * The audio file isn't bundled — drop yours at /public/xtal.mp3 (or pass a URL
- * via the `src` prop). For Aphex Twin's "Xtal" the user supplies the file
- * locally; we don't ship copyrighted audio.
- */
 export default function BackgroundMusic({
-  src = "/xtal.mp3",
+  src = "/ambient.mp3",
   volume = 0.35,
   hideToggle = false,
 }: BackgroundMusicProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const [muted, setMuted] = useState(true)
-  const [hasInteracted, setHasInteracted] = useState(false)
+  const [muted, setMuted] = useState(false)
 
-  // First user interaction unblocks autoplay across the whole page
+  // On first user interaction, directly call play() on the audio element.
+  // Browsers require a user gesture before allowing audio — calling play()
+  // inside the gesture handler satisfies that requirement.
   useEffect(() => {
-    if (hasInteracted) return
-    const onFirstInteract = () => {
-      setHasInteracted(true)
-      setMuted(false)
+    const tryPlay = () => {
+      const a = audioRef.current
+      if (!a) return
+      a.volume = volume
+      a.loop = true
+      a.play().catch(() => {})
     }
-    window.addEventListener("pointerdown", onFirstInteract, { once: true })
-    window.addEventListener("keydown", onFirstInteract, { once: true })
+    window.addEventListener("pointerdown", tryPlay, { once: true })
+    window.addEventListener("keydown", tryPlay, { once: true })
     return () => {
-      window.removeEventListener("pointerdown", onFirstInteract)
-      window.removeEventListener("keydown", onFirstInteract)
+      window.removeEventListener("pointerdown", tryPlay)
+      window.removeEventListener("keydown", tryPlay)
     }
-  }, [hasInteracted])
+  }, [volume])
 
-  // Keep audio playback in sync with the muted flag
+  // Sync mute/unmute toggle with actual playback
   useEffect(() => {
     const a = audioRef.current
     if (!a) return
-    a.volume = volume
-    a.loop = true
     if (muted) {
       a.pause()
     } else {
-      a.play().catch(() => {
-        // Autoplay blocked — user will need to click the toggle once
-      })
+      a.play().catch(() => {})
     }
-  }, [muted, volume])
+  }, [muted])
 
   return (
     <>
