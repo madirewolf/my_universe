@@ -2,7 +2,7 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
-import { Suspense, useEffect, useRef, useState, type MutableRefObject } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState, type MutableRefObject } from "react"
 import * as THREE from "three"
 import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type Universe } from "@/lib/constants"
 import SolarSystem from "./solar-system"
@@ -22,6 +22,7 @@ import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
 
 type Mode = "system" | "planet" | "moon"
+const MOBILE_QUERY = "(max-width: 768px)"
 
 // Easing helpers for the rift cinematic.
 //   easeInCubic    → Phase A: accelerating dolly-IN (slow start, fast end)
@@ -45,8 +46,22 @@ const RIFT_REVEAL_DIST = 7
 // Reused scratch Vector3 for the lookAt lerp — avoids per-frame allocations.
 const _lookAt = new THREE.Vector3()
 
+function landmarkKey(landmark: Landmark): string {
+  return `${landmark.name}::${landmark.category}`
+}
+
+function findLandmarkIndex(landmarks: Landmark[], landmark: Landmark | null): number {
+  if (!landmark) return -1
+  const direct = landmarks.indexOf(landmark)
+  if (direct >= 0) return direct
+
+  const key = landmarkKey(landmark)
+  return landmarks.findIndex((candidate) => landmarkKey(candidate) === key)
+}
+
 function CameraController({
   mode,
+  isMobile,
   isTransitioning,
   setIsTransitioning,
   riftState,
@@ -54,6 +69,7 @@ function CameraController({
   onCinematicComplete,
 }: {
   mode: Mode
+  isMobile: boolean
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
   riftState: MutableRefObject<RiftCinematicState>
@@ -161,9 +177,9 @@ function CameraController({
       // Default top-down. Sprite Html cards billboard to face the camera so
       // they stay readable regardless of angle. Tiny z offset breaks the
       // OrbitControls gimbal-lock singularity at polar angle 0.
-      target.current.set(0, 12, 0.5)
+      target.current.set(0, isMobile ? 18 : 12, 0.5)
     } else if (mode === "planet") {
-      target.current.set(0, 0, 12)
+      target.current.set(0, 0, isMobile ? 18 : 12)
     } else {
       target.current.set(0, 52, 0)
     }
@@ -173,6 +189,35 @@ function CameraController({
       setIsTransitioning(false)
     }
   })
+
+  return null
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mql = window.matchMedia(query)
+    const update = () => setMatches(mql.matches)
+    update()
+    mql.addEventListener("change", update)
+    return () => mql.removeEventListener("change", update)
+  }, [query])
+  return matches
+}
+
+function RenderHeartbeat() {
+  const { invalidate } = useThree()
+
+  useEffect(() => {
+    let raf = 0
+    const tick = () => {
+      invalidate()
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [invalidate])
 
   return null
 }
@@ -334,6 +379,7 @@ function RiftCompileGate({
 }
 
 export default function SolarPortfolio() {
+  const isMobile = useMediaQuery(MOBILE_QUERY)
   const [universe, setUniverse] = useState<Universe>("professional")
   const [selectedPlanet, setSelectedPlanet] = useState<number | null>(null)
   const [planetRotation, setPlanetRotation] = useState({ lon: 0, lat: 0 })
@@ -398,27 +444,88 @@ export default function SolarPortfolio() {
   const planets = config.planets
   const selected = selectedPlanet !== null ? planets[selectedPlanet] : null
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const params = new URLSearchParams(window.location.search)
+    const universeParam = params.get("universe")
+    const planetParam = params.get("planet")
+    const moonParam = params.get("moon")
+    if (!universeParam || planetParam === null || moonParam === null) return
+    if (universeParam !== "professional" && universeParam !== "personal") return
+
+    const planetIndex = Number.parseInt(planetParam, 10)
+    const moonIndex = Number.parseInt(moonParam, 10)
+    const targetPlanet = UNIVERSE_CONFIG[universeParam].planets[planetIndex]
+    const targetMoon = targetPlanet?.landmarks[moonIndex]
+    if (!targetPlanet || !targetMoon) return
+
+    setUniverse(universeParam)
+    setSelectedPlanet(planetIndex)
+    setSelectedLandmark(targetMoon)
+    setHoveredPlanet(null)
+    setIsTransitioning(true)
+  }, [])
+
   const mode: Mode = selectedLandmark ? "moon" : selectedPlanet !== null ? "planet" : "system"
 
   // When in moon mode, derive the moon's index in its planet's landmark list so
   // we hand the same seed to MoonView that the orbiting moon used.
   const landmarkIndex =
-    selected && selectedLandmark ? selected.landmarks.indexOf(selectedLandmark) : -1
+    selected && selectedLandmark ? findLandmarkIndex(selected.landmarks, selectedLandmark) : -1
   const landmarkSeed = landmarkIndex >= 0 ? landmarkIndex * 13.7 + 7 : 0
+
+  const replaceQuery = useCallback((planetIndex: number | null, moonIndex?: number | null) => {
+    if (typeof window === "undefined") return
+
+    const url = new URL(window.location.href)
+    if (planetIndex === null) {
+      url.search = ""
+    } else {
+      url.searchParams.set("universe", universe)
+      url.searchParams.set("planet", String(planetIndex))
+      if (moonIndex === undefined || moonIndex === null) {
+        url.searchParams.delete("moon")
+      } else {
+        url.searchParams.set("moon", String(moonIndex))
+      }
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
+  }, [universe])
 
   const handlePlanetClick = (idx: number) => {
     setSelectedPlanet(idx)
+    replaceQuery(idx, null)
     setPlanetRotation({ lon: 0, lat: 0 })
     setIsTransitioning(true)
   }
 
   const handleLandmarkClick = (landmark: Landmark) => {
     setSelectedLandmark(landmark)
+    const moonIndex = selected ? findLandmarkIndex(selected.landmarks, landmark) : -1
+    if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex)
     setIsTransitioning(true)
   }
 
+  const handleMoonStep = useCallback((direction: -1 | 1) => {
+    if (!selected || !selectedLandmark || selected.landmarks.length === 0) return
+
+    const currentIndex = findLandmarkIndex(selected.landmarks, selectedLandmark)
+    if (currentIndex < 0) return
+
+    const nextIndex =
+      (currentIndex + direction + selected.landmarks.length) % selected.landmarks.length
+    setSelectedLandmark(selected.landmarks[nextIndex])
+    if (selectedPlanet !== null) replaceQuery(selectedPlanet, nextIndex)
+    setIsTransitioning(true)
+  }, [replaceQuery, selected, selectedLandmark, selectedPlanet])
+
+  const handlePrevMoon = useCallback(() => handleMoonStep(-1), [handleMoonStep])
+  const handleNextMoon = useCallback(() => handleMoonStep(1), [handleMoonStep])
+
   const handleBackFromMoon = () => {
     setSelectedLandmark(null)
+    if (selectedPlanet !== null) replaceQuery(selectedPlanet, null)
     setIsTransitioning(true)
   }
 
@@ -426,6 +533,7 @@ export default function SolarPortfolio() {
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setHoveredPlanet(null)
+    replaceQuery(null)
     setIsTransitioning(true)
   }
 
@@ -465,10 +573,12 @@ export default function SolarPortfolio() {
 
       <Canvas
         camera={{ position: [0, 52, 0], fov: 60 }}
+        frameloop="always"
         gl={{ antialias: true }}
         onPointerDown={() => isTransitioning && setIsTransitioning(false)}
       >
         <Suspense fallback={null}>
+          <RenderHeartbeat />
           <StarNest
             // Personal universe stays soft pastel so the fractal doesn't fight
             // the bright pink/violet background. Public universe is pushed
@@ -489,6 +599,7 @@ export default function SolarPortfolio() {
           <Environment preset="night" />
           <CameraController
             mode={mode}
+            isMobile={isMobile}
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
             riftState={riftState}
@@ -552,7 +663,7 @@ export default function SolarPortfolio() {
           )}
 
           {mode === "moon" && selectedLandmark && (
-            <MoonView landmark={selectedLandmark} seed={landmarkSeed} universe={universe} />
+            <MoonView landmark={selectedLandmark} seed={landmarkSeed} universe={universe} isMobile={isMobile} />
           )}
 
           {/* Rift transition — lightspeed corridor. Stage machine lives in
@@ -566,8 +677,10 @@ export default function SolarPortfolio() {
             target={[0, 0, 0]}
             enableZoom
             enableRotate
-            minDistance={mode === "system" ? 30 : mode === "moon" ? 4 : 8}
-            maxDistance={mode === "system" ? 90 : mode === "moon" ? 16 : 20}
+            enableDamping
+            dampingFactor={0.055}
+            minDistance={mode === "system" ? 30 : mode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 12 : 8)}
+            maxDistance={mode === "system" ? 90 : mode === "moon" ? (isMobile ? 24 : 16) : (isMobile ? 28 : 20)}
             autoRotate={mode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
             maxPolarAngle={mode === "system" ? Math.PI / 2.2 : Math.PI}
@@ -587,6 +700,8 @@ export default function SolarPortfolio() {
         selectedLandmark={selectedLandmark}
         onBackToSystem={handleBack}
         onBackFromMoon={handleBackFromMoon}
+        onPrevMoon={handlePrevMoon}
+        onNextMoon={handleNextMoon}
         onJoystick={setJoystick}
         onEnterRift={handleEnterRift}
       />

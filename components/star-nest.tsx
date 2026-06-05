@@ -53,8 +53,8 @@ const FRAG = /* glsl */ `
     uv.y *= uResolution.y / max(uResolution.x, 1.0);
     vec3 dir = vec3(uv * zoom, 1.0);
 
-    float a1 = 0.5 + uMouse.x * 2.0;
-    float a2 = 0.8 + uMouse.y * 2.0;
+    float a1 = 0.5 + uMouse.x * 2.0 + sin(uTime * 0.17) * 0.42;
+    float a2 = 0.8 + uMouse.y * 2.0 + cos(uTime * 0.13) * 0.36;
     mat2 rot1 = mat2(cos(a1), sin(a1), -sin(a1), cos(a1));
     mat2 rot2 = mat2(cos(a2), sin(a2), -sin(a2), cos(a2));
     dir.xz *= rot1;
@@ -68,9 +68,9 @@ const FRAG = /* glsl */ `
     // pocket forever while still giving continuous slow motion.
     vec3 from = vec3(1.0, 0.5, 0.5);
     from += vec3(
-      sin(uTime * 0.07) * 0.35,
-      cos(uTime * 0.05) * 0.30,
-      -2.0 + sin(uTime * 0.04) * 0.20
+      sin(uTime * 0.16) * 0.55,
+      cos(uTime * 0.12) * 0.42,
+      -2.0 + sin(uTime * 0.19) * 0.32
     );
     from.xz *= rot1;
     from.xy *= rot2;
@@ -96,7 +96,8 @@ const FRAG = /* glsl */ `
       s += stepsize;
     }
     v = mix(vec3(length(v)), v, uSaturation);
-    vec3 color = v * 0.01 * uTint;
+    float breath = 0.9 + 0.1 * sin(uTime * 0.9 + length(uv) * 7.0);
+    vec3 color = v * 0.01 * breath * uTint;
 
     // Additive: alpha based on luminance so dark space stays transparent
     float lum = dot(color, vec3(0.299, 0.587, 0.114));
@@ -111,16 +112,30 @@ export default function StarNest({
 }: StarNestProps) {
   const { camera, size } = useThree()
   const matRef = useRef<ShaderMaterial>(null)
+  const timeRef = useRef(0)
+  const prevFrameRef = useRef<number | null>(null)
+  const smoothMouseRef = useRef(new THREE.Vector2(0.5, 0.5))
+  const targetMouseRef = useRef(new THREE.Vector2(0.5, 0.5))
 
-  useFrame((state) => {
+  useFrame(() => {
     if (!matRef.current) return
-    matRef.current.uniforms.uTime.value = state.clock.elapsedTime
-    matRef.current.uniforms.uResolution.value.set(size.width, size.height)
 
-    // Drive the shader's mouse-rotation analog from the camera quaternion so
-    // the fractal cosmos appears to rotate with the user's view.
+    const now = performance.now() / 1000
+    const prev = prevFrameRef.current ?? now
+    const dt = Math.min(now - prev, 0.05)
+    prevFrameRef.current = now
+    timeRef.current += dt
+
     const q = camera.quaternion
-    matRef.current.uniforms.uMouse.value.set(q.y * 1.6, q.x * 1.6)
+    targetMouseRef.current.set(
+      0.5 + q.y * 0.45 + Math.sin(timeRef.current * 0.09) * 0.08,
+      0.5 + q.x * 0.45 + Math.cos(timeRef.current * 0.07) * 0.08,
+    )
+    smoothMouseRef.current.lerp(targetMouseRef.current, 1 - Math.pow(0.04, dt * 60))
+
+    matRef.current.uniforms.uTime.value = timeRef.current
+    matRef.current.uniforms.uResolution.value.set(size.width, size.height)
+    matRef.current.uniforms.uMouse.value.copy(smoothMouseRef.current)
   })
 
   return (

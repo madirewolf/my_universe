@@ -27,7 +27,10 @@ function pickColor() {
 }
 
 export default function StarField() {
-  const matRef = useRef<THREE.ShaderMaterial>(null)
+  const mainMatRef = useRef<THREE.ShaderMaterial>(null)
+  const milkyMatRef = useRef<THREE.ShaderMaterial>(null)
+  const timeRef = useRef(0)
+  const prevFrameRef = useRef<number | null>(null)
 
   const stars = useMemo(() => {
     const N = 5500
@@ -103,8 +106,15 @@ export default function StarField() {
     return { pos, col, sizes, phases, speeds, N }
   }, [])
 
-  useFrame((s) => {
-    if (matRef.current) matRef.current.uniforms.uTime.value = s.clock.elapsedTime
+  useFrame(() => {
+    const now = performance.now() / 1000
+    const prev = prevFrameRef.current ?? now
+    const dt = Math.min(now - prev, 0.05)
+    prevFrameRef.current = now
+    timeRef.current += dt
+
+    if (mainMatRef.current) mainMatRef.current.uniforms.uTime.value = timeRef.current
+    if (milkyMatRef.current) milkyMatRef.current.uniforms.uTime.value = timeRef.current
   })
 
   const vertexShader = /* glsl */ `
@@ -151,7 +161,6 @@ export default function StarField() {
   const shaderProps = {
     vertexShader,
     fragmentShader,
-    uniforms: { uTime: { value: 0 } },
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
@@ -168,7 +177,7 @@ export default function StarField() {
           <bufferAttribute attach="attributes-aPhase"   count={stars.N} array={stars.phases} itemSize={1} />
           <bufferAttribute attach="attributes-aSpeed"   count={stars.N} array={stars.speeds} itemSize={1} />
         </bufferGeometry>
-        <shaderMaterial ref={matRef} {...shaderProps} />
+        <shaderMaterial ref={mainMatRef} {...shaderProps} uniforms={{ uTime: { value: 0 } }} />
       </points>
 
       {/* Milky Way band */}
@@ -180,7 +189,7 @@ export default function StarField() {
           <bufferAttribute attach="attributes-aPhase"   count={milkyWay.N} array={milkyWay.phases} itemSize={1} />
           <bufferAttribute attach="attributes-aSpeed"   count={milkyWay.N} array={milkyWay.speeds} itemSize={1} />
         </bufferGeometry>
-        <shaderMaterial {...shaderProps} />
+        <shaderMaterial ref={milkyMatRef} {...shaderProps} uniforms={{ uTime: { value: 0 } }} />
       </points>
     </group>
   )

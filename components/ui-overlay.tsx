@@ -37,6 +37,8 @@ interface UIOverlayProps {
   selectedLandmark: Landmark | null
   onBackToSystem: () => void
   onBackFromMoon: () => void
+  onPrevMoon: () => void
+  onNextMoon: () => void
   onJoystick: (vel: { x: number; y: number }) => void
   onEnterRift: () => void
   onTogglePause: () => void
@@ -44,8 +46,9 @@ interface UIOverlayProps {
 
 
 const GLASS_TONES = {
-  default: { bg: "rgba(4, 6, 20, 0.58)", blur: 18 },
-  strong: { bg: "rgba(4, 6, 20, 0.75)", blur: 20 },
+  whisper: { bg: "rgba(255, 255, 255, 0.018)", blur: 18 },
+  default: { bg: "rgba(255, 255, 255, 0.028)", blur: 20 },
+  strong: { bg: "rgba(255, 255, 255, 0.044)", blur: 22 },
 } as const
 
 const TITLE_GRADIENTS: Record<Universe, string> = {
@@ -77,20 +80,24 @@ function GlassPanel({
   children: React.ReactNode
 }) {
   const { bg, blur } = GLASS_TONES[tone]
-  const border = accentColor ? `${accentColor}28` : "rgba(255,255,255,0.06)"
+  const isWhisper = tone === "whisper" && !accentColor
+  const border = accentColor ? `${accentColor}24` : "rgba(255,255,255,0.025)"
   // Soft outer glow that bleeds into the surrounding nebula instead of a
   // hard rectangular drop shadow.
   const shadow = accentColor
-    ? `0 0 28px ${accentColor}18, 0 18px 48px rgba(0,0,0,0.35)`
-    : "0 0 28px rgba(120,140,200,0.10), 0 18px 48px rgba(0,0,0,0.32)"
+    ? `0 0 22px ${accentColor}10, 0 14px 36px rgba(0,0,0,0.16)`
+    : isWhisper
+      ? "0 0 18px rgba(180,210,255,0.025)"
+      : "0 0 24px rgba(180,210,255,0.04), 0 14px 34px rgba(0,0,0,0.14)"
+  const accentWash = accentColor ? `radial-gradient(circle at 14% 0%, ${accentColor}18, transparent 46%), ` : ""
   return (
     <div
       className={cn("relative rounded-2xl", className)}
       style={{
-        background: bg,
+        background: `${accentWash}linear-gradient(135deg, ${bg}, rgba(255,255,255,0.006) 48%, rgba(255,255,255,0.032))`,
         backdropFilter: `blur(${blur}px)`,
         WebkitBackdropFilter: `blur(${blur}px)`,
-        border: `1px solid ${border}`,
+        border: `1px solid ${isWhisper ? "rgba(255,255,255,0.008)" : border}`,
         boxShadow: shadow,
       }}
     >
@@ -115,6 +122,19 @@ function NavBtn({ onClick, children }: { onClick: () => void; children: React.Re
 // ─── NavDial: drag-the-dot joystick on a compass ring ──────────────────────
 // Continuous rotation: drag distance = velocity, drag direction = axis.
 // Releasing the dot springs it back to center and stops rotation.
+
+function landmarkKey(landmark: Landmark): string {
+  return `${landmark.name}::${landmark.category}`
+}
+
+function findLandmarkIndex(landmarks: Landmark[], landmark: Landmark | null): number {
+  if (!landmark) return -1
+  const direct = landmarks.indexOf(landmark)
+  if (direct >= 0) return direct
+
+  const key = landmarkKey(landmark)
+  return landmarks.findIndex((candidate) => landmarkKey(candidate) === key)
+}
 
 function NavDial({
   onJoystick,
@@ -241,8 +261,8 @@ function NavDial({
           cx={HALF}
           cy={HALF}
           r={26}
-          fill="rgba(4,6,20,0.4)"
-          stroke="rgba(255,255,255,0.06)"
+          fill="rgba(255,255,255,0.026)"
+          stroke="rgba(255,255,255,0.035)"
           strokeWidth={1}
         />
         {ticks}
@@ -308,10 +328,24 @@ function SocialLink({ href, icon: Icon }: { href: string; icon: typeof Instagram
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200
-        bg-[rgba(4,6,20,0.45)] backdrop-blur-[12px] border border-white/10 text-white/50
+      onPointerDown={(event) => {
+        event.stopPropagation()
+      }}
+      onTouchStart={(event) => {
+        event.stopPropagation()
+      }}
+      onClick={(event) => {
+        event.stopPropagation()
+      }}
+      className="relative z-[120] flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-200
+        backdrop-blur-[18px] border text-white/50
         hover:border-white/30 hover:text-white/95"
-      style={{ WebkitBackdropFilter: "blur(12px)" }}
+      style={{
+        background: "linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.008) 50%, rgba(255,255,255,0.04))",
+        borderColor: "rgba(255,255,255,0.03)",
+        WebkitBackdropFilter: "blur(18px)",
+        boxShadow: "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
+      }}
     >
       <Icon size={18} />
     </a>
@@ -323,20 +357,34 @@ function RiftHint({ universe, onClick }: { universe: Universe; onClick: () => vo
   const otherSide = universe === "professional" ? "Inner Universe" : "Public Universe"
   return (
     <button
-      onClick={onClick}
-      className="pointer-events-auto inline-flex items-center gap-2 text-[11px] font-medium tracking-[0.2em] uppercase px-3 py-2 rounded-lg transition-all duration-200"
+      type="button"
+      onPointerDown={(event) => {
+        event.stopPropagation()
+      }}
+      onTouchStart={(event) => {
+        event.stopPropagation()
+      }}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onClick()
+      }}
+      className="relative z-[120] pointer-events-auto inline-flex items-center gap-2 text-[11px] font-medium tracking-[0.2em] uppercase px-3 py-2 rounded-lg transition-all duration-200"
       style={{
-        background: `${accent}10`,
-        border: `1px solid ${accent}40`,
+        background: `radial-gradient(circle at 10% 0%, ${accent}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.035))`,
+        border: `1px solid ${accent}22`,
         color: accent,
+        boxShadow: `0 0 18px ${accent}10, 0 12px 24px rgba(0,0,0,0.10)`,
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
       }}
       onMouseEnter={e => {
-        ;(e.currentTarget as HTMLElement).style.background = `${accent}25`
-        ;(e.currentTarget as HTMLElement).style.borderColor = `${accent}80`
+        ;(e.currentTarget as HTMLElement).style.background = `radial-gradient(circle at 10% 0%, ${accent}26, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.048), rgba(255,255,255,0.01) 52%, rgba(255,255,255,0.052))`
+        ;(e.currentTarget as HTMLElement).style.borderColor = `${accent}42`
       }}
       onMouseLeave={e => {
-        ;(e.currentTarget as HTMLElement).style.background = `${accent}10`
-        ;(e.currentTarget as HTMLElement).style.borderColor = `${accent}40`
+        ;(e.currentTarget as HTMLElement).style.background = `radial-gradient(circle at 10% 0%, ${accent}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.035))`
+        ;(e.currentTarget as HTMLElement).style.borderColor = `${accent}22`
       }}
     >
       <Sparkles size={12} />
@@ -353,7 +401,7 @@ function LandmarkPanel({ landmark, onClose }: { landmark: Landmark; onClose: () 
         <GlassPanel tone="strong" accentColor={c}>
           <div
             className="h-px w-full"
-            style={{ background: `linear-gradient(90deg, ${c}cc, ${c}44, transparent 70%)` }}
+            style={{ background: `linear-gradient(90deg, ${c}55, ${c}18, transparent 70%)` }}
           />
 
           <div className="p-6 relative">
@@ -388,8 +436,8 @@ function LandmarkPanel({ landmark, onClose }: { landmark: Landmark; onClose: () 
                   key={t}
                   className="text-[10px] font-medium px-2 py-0.5 rounded-md"
                   style={{
-                    background: `${c}15`,
-                    border: `1px solid ${c}30`,
+                    background: `radial-gradient(circle at 12% 0%, ${c}16, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                    border: `1px solid ${c}20`,
                     color: `${c}cc`,
                   }}
                 >
@@ -412,15 +460,17 @@ function LandmarkPanel({ landmark, onClose }: { landmark: Landmark; onClose: () 
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.18em] uppercase px-3 py-1.5 rounded-md transition-all"
                   style={{
-                    background: `${c}15`,
-                    border: `1px solid ${c}40`,
+                    background: `radial-gradient(circle at 12% 0%, ${c}16, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                    border: `1px solid ${c}24`,
                     color: c,
+                    backdropFilter: "blur(16px)",
+                    WebkitBackdropFilter: "blur(16px)",
                   }}
                   onMouseEnter={e => {
-                    ;(e.currentTarget as HTMLElement).style.background = `${c}28`
+                    ;(e.currentTarget as HTMLElement).style.background = `radial-gradient(circle at 12% 0%, ${c}24, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.046), rgba(255,255,255,0.01) 52%, rgba(255,255,255,0.052))`
                   }}
                   onMouseLeave={e => {
-                    ;(e.currentTarget as HTMLElement).style.background = `${c}15`
+                    ;(e.currentTarget as HTMLElement).style.background = `radial-gradient(circle at 12% 0%, ${c}16, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`
                   }}
                 >
                   View Project →
@@ -442,7 +492,7 @@ function HoverTooltip({ planet }: { planet: PlanetEntry }) {
       <GlassPanel tone="strong" accentColor={c}>
         <div
           className="h-px w-full"
-          style={{ background: `linear-gradient(90deg, ${c}cc, ${c}44, transparent 70%)` }}
+          style={{ background: `linear-gradient(90deg, ${c}55, ${c}18, transparent 70%)` }}
         />
 
         <div className="p-5">
@@ -510,8 +560,8 @@ function HoverTooltip({ planet }: { planet: PlanetEntry }) {
                 key={tag}
                 className="text-[10px] font-medium px-2 py-0.5 rounded-md"
                 style={{
-                  background: `${c}15`,
-                  border: `1px solid ${c}30`,
+                  background: `radial-gradient(circle at 12% 0%, ${c}16, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                  border: `1px solid ${c}20`,
                   color: `${c}cc`,
                 }}
               >
@@ -546,6 +596,8 @@ export default function UIOverlay({
   selectedLandmark,
   onBackToSystem,
   onBackFromMoon,
+  onPrevMoon,
+  onNextMoon,
   onJoystick,
   onEnterRift,
   onTogglePause,
@@ -588,6 +640,27 @@ export default function UIOverlay({
   const planets = config.planets
   const selected = selectedPlanet !== null ? planets[selectedPlanet] : null
   const hovered = hoveredPlanet !== null ? planets[hoveredPlanet] : null
+  const selectedLandmarkIndex =
+    selected && selectedLandmark ? findLandmarkIndex(selected.landmarks, selectedLandmark) : -1
+  const moonCount = selected?.landmarks.length ?? 0
+
+  useEffect(() => {
+    if (mode !== "moon") return
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        onPrevMoon()
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault()
+        onNextMoon()
+      }
+    }
+
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [mode, onNextMoon, onPrevMoon])
 
   const titleGradient = TITLE_GRADIENTS[universe]
   const accentGradient = ACCENT_GRADIENTS[universe]
@@ -599,38 +672,34 @@ export default function UIOverlay({
       {mode === "system" && (
         <div
           className={cn(
-            "absolute pointer-events-none",
+            "absolute pointer-events-none z-20",
             isMobile ? "top-3 left-3 right-3" : "top-8 left-8",
           )}
         >
-          <GlassPanel>
-            <div className="h-px w-full" style={{ background: accentGradient }} />
+          <GlassPanel tone="whisper" className="overflow-hidden">
             <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
               <div
                 className={cn(
-                  "font-semibold tracking-[0.28em] uppercase",
-                  isMobile ? "text-[9px] mb-2" : "text-[10px] mb-4",
-                )}
-                style={{ color: eyebrowColor }}
-              >
-                {config.eyebrow}
-              </div>
-
-              <div
-                className={cn(
-                  "font-bold text-white tracking-tight mb-1",
+                  "font-bold tracking-tight mb-1",
                   isMobile ? "text-xl" : "text-3xl",
                 )}
+                style={{
+                  color: "rgba(255,255,255,0.78)",
+                  textShadow:
+                    "0 0 18px rgba(255,255,255,0.16), 0 1px 1px rgba(255,255,255,0.22), 0 14px 34px rgba(0,0,0,0.24)",
+                }}
               >
                 Welcome to my{" "}
                 <span
                   key={universe}
                   className="inline-block font-black bg-clip-text text-transparent"
                   style={{
-                    backgroundImage: titleGradient,
+                    backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.54) 34%, rgba(255,255,255,0.88) 58%, rgba(255,255,255,0.48) 100%), ${titleGradient}`,
+                    backgroundBlendMode: "screen",
                     backgroundSize: "200% 100%",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
+                    filter: "drop-shadow(0 0 14px rgba(255,255,255,0.14)) drop-shadow(0 10px 26px rgba(0,0,0,0.26))",
                     animation: "wave 3s ease-in-out infinite, gradient 8s linear infinite",
                   }}
                 >
@@ -639,11 +708,11 @@ export default function UIOverlay({
               </div>
 
               <div
-                className={cn(
-                  "font-medium",
-                  isMobile ? "text-xs mb-3" : "text-sm mb-5",
-                )}
-                style={{ color: "rgba(255,255,255,0.72)" }}
+                className="font-medium text-sm"
+                style={{
+                  color: "rgba(255,255,255,0.52)",
+                  textShadow: "0 0 12px rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.22)",
+                }}
               >
                 or rather my{" "}
                 <span
@@ -652,21 +721,6 @@ export default function UIOverlay({
                 >
                   {glitchText}
                 </span>
-              </div>
-
-              <div
-                className={cn("h-px", isMobile ? "mb-2" : "mb-4")}
-                style={{ background: "linear-gradient(90deg, rgba(255,255,255,0.1), transparent)" }}
-              />
-
-              <div
-                className={cn(
-                  "tracking-wide",
-                  isMobile ? "text-[10px]" : "text-xs",
-                )}
-                style={{ color: "rgba(255,255,255,0.38)" }}
-              >
-                {isMobile ? "Tap any planet to explore" : "Hover & click any planet to explore"}
               </div>
 
               <div className={cn(isMobile ? "mt-2" : "mt-4")}>
@@ -689,7 +743,7 @@ export default function UIOverlay({
             )}
           >
             <GlassPanel>
-              <div className="h-px w-full" style={{ background: accentGradient }} />
+              <div className="h-px w-full opacity-45" style={{ background: accentGradient }} />
               <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
                 <div
                   className={cn(
@@ -718,14 +772,27 @@ export default function UIOverlay({
             </GlassPanel>
 
             <button
-              onClick={onBackToSystem}
+              type="button"
+              onPointerDown={(event) => {
+                event.stopPropagation()
+              }}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onBackToSystem()
+              }}
               className={cn(
-                "flex items-center gap-2 rounded-xl font-medium transition-all duration-150",
-                "bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60",
+                "z-[80] flex items-center gap-2 rounded-xl font-medium transition-all duration-150",
+                "backdrop-blur-[20px] border text-white/60",
                 "hover:border-[rgba(100,160,255,0.35)] hover:text-white/95",
                 isMobile ? "self-start px-3 py-2 text-xs" : "px-4 py-2.5 text-sm",
               )}
-              style={{ WebkitBackdropFilter: "blur(18px)" }}
+              style={{
+                background: "linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))",
+                borderColor: "rgba(255,255,255,0.03)",
+                WebkitBackdropFilter: "blur(20px)",
+                boxShadow: "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
+              }}
             >
               <Home size={isMobile ? 13 : 15} />
               {isMobile ? "Back" : "Back to Solar System"}
@@ -757,65 +824,210 @@ export default function UIOverlay({
           <div
             className={cn(
               "absolute pointer-events-auto",
-              isMobile ? "top-3 left-3 right-3" : "top-8 left-8",
+              isMobile ? "top-3 left-3 right-3" : "top-8 left-8 max-w-[360px]",
             )}
+            style={
+              isMobile
+                ? { width: "calc(100vw - 24px)", maxWidth: "calc(100vw - 24px)", zIndex: 80 }
+                : { zIndex: 80 }
+            }
           >
             <GlassPanel accentColor={selectedLandmark.color}>
               <div
                 className="h-px w-full"
                 style={{
-                  background: `linear-gradient(90deg, ${selectedLandmark.color}cc, ${selectedLandmark.color}33, transparent 70%)`,
+                  background: `linear-gradient(90deg, ${selectedLandmark.color}55, ${selectedLandmark.color}18, transparent 70%)`,
                 }}
               />
-              <div className={cn(isMobile ? "px-4 py-3" : "px-5 py-4")}>
-                <div
-                  className={cn(
-                    "font-semibold tracking-[0.22em] uppercase mb-1",
-                    isMobile ? "text-[9px]" : "text-[10px]",
+              {isMobile ? (
+                <div className="px-2.5 py-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onPointerDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onBackFromMoon()
+                      }}
+                      aria-label={`Back to ${selected.name}`}
+                      className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg border transition-all duration-150 active:scale-95"
+                      style={{
+                        background: `radial-gradient(circle at 12% 0%, ${selectedLandmark.color}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                        borderColor: `${selectedLandmark.color}24`,
+                        color: "rgba(255,255,255,0.72)",
+                        boxShadow: `0 0 18px ${selectedLandmark.color}10`,
+                      }}
+                    >
+                      <ArrowLeft size={14} />
+                    </button>
+
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="truncate text-[9px] font-semibold uppercase tracking-[0.18em]"
+                        style={{ color: `${selectedLandmark.color}cc` }}
+                      >
+                        Current Planet
+                      </div>
+                      <div className="truncate text-sm font-bold leading-tight text-white">
+                        {selected.name}
+                      </div>
+                    </div>
+                  </div>
+
+                  {moonCount > 1 && (
+                    <div
+                      className="mt-2 flex items-center gap-2"
+                      style={{ width: 188, maxWidth: "100%" }}
+                    >
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onPrevMoon()
+                        }}
+                        aria-label="Previous moon"
+                        className="grid h-9 w-9 place-items-center rounded-lg border transition-all duration-150 active:scale-95"
+                        style={{
+                          background: `radial-gradient(circle at 12% 0%, ${selectedLandmark.color}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                          borderColor: `${selectedLandmark.color}24`,
+                          color: `${selectedLandmark.color}dd`,
+                        }}
+                      >
+                        <ArrowLeft size={14} />
+                      </button>
+                      <div
+                        className="w-[100px] rounded-lg border px-2 py-2 text-center text-[10px] font-semibold tabular-nums"
+                        style={{
+                          color: "rgba(255,255,255,0.55)",
+                          borderColor: `${selectedLandmark.color}18`,
+                          background: "linear-gradient(135deg, rgba(255,255,255,0.026), rgba(255,255,255,0.006) 52%, rgba(255,255,255,0.03))",
+                        }}
+                      >
+                        {selectedLandmarkIndex + 1} / {moonCount}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onNextMoon()
+                        }}
+                        aria-label="Next moon"
+                        className="grid h-9 w-9 place-items-center rounded-lg border transition-all duration-150 active:scale-95"
+                        style={{
+                          background: `radial-gradient(circle at 12% 0%, ${selectedLandmark.color}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                          borderColor: `${selectedLandmark.color}24`,
+                          color: `${selectedLandmark.color}dd`,
+                        }}
+                      >
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
                   )}
-                  style={{ color: `${selectedLandmark.color}cc` }}
-                >
-                  Now Inspecting
                 </div>
-                <div
-                  className={cn(
-                    "font-bold text-white tracking-tight leading-tight",
-                    isMobile ? "text-base" : "text-lg",
-                  )}
-                >
-                  {selectedLandmark.name}
+              ) : (
+                <div className="px-5 py-4">
+                  <div
+                    className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
+                    style={{ color: `${selectedLandmark.color}cc` }}
+                  >
+                    Current Planet
+                  </div>
+                  <div className="text-lg font-bold leading-tight tracking-tight text-white">
+                    {selected.name}
+                  </div>
+                  <div
+                    className="mt-1 text-[11px]"
+                    style={{ color: "rgba(255,255,255,0.45)" }}
+                  >
+                    Moon {selectedLandmarkIndex + 1} / {moonCount}
+                  </div>
                 </div>
-                <div
-                  className={cn("mt-1", isMobile ? "text-[10px]" : "text-[11px]")}
-                  style={{ color: "rgba(255,255,255,0.45)" }}
-                >
-                  {selected.name}
-                </div>
-              </div>
+              )}
             </GlassPanel>
           </div>
 
-          <button
-            onClick={onBackFromMoon}
-            className={cn(
-              "absolute flex items-center gap-2 rounded-xl font-medium transition-all duration-150",
-              "bg-[rgba(4,6,20,0.58)] backdrop-blur-[18px] border border-white/[0.07] text-white/60",
-              "hover:border-[rgba(100,160,255,0.35)] hover:text-white/95 pointer-events-auto",
-              isMobile
-                ? "bottom-3 left-1/2 -translate-x-1/2 px-3 py-2 text-xs"
-                : "top-8 right-8 px-4 py-2.5 text-sm",
-            )}
-            style={{ WebkitBackdropFilter: "blur(18px)" }}
-          >
-            <ArrowLeft size={isMobile ? 13 : 15} />
-            {isMobile
-              ? "Back"
-              : `Back to ${selected.name.replace(/\s*Planet\s*$/i, "")}`}
-          </button>
+          {!isMobile && (
+            <div className="absolute top-8 right-8 z-[80] flex items-center gap-2 pointer-events-auto">
+              {moonCount > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onPrevMoon()
+                    }}
+                    aria-label="Previous moon"
+                    className="grid h-11 w-11 place-items-center rounded-xl border text-white/60 transition-all duration-150 hover:text-white/95 active:scale-95"
+                    style={{
+                      background: `radial-gradient(circle at 12% 0%, ${selectedLandmark.color}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                      borderColor: `${selectedLandmark.color}24`,
+                      WebkitBackdropFilter: "blur(20px)",
+                      boxShadow: "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <ArrowLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onNextMoon()
+                    }}
+                    aria-label="Next moon"
+                    className="grid h-11 w-11 place-items-center rounded-xl border text-white/60 transition-all duration-150 hover:text-white/95 active:scale-95"
+                    style={{
+                      background: `radial-gradient(circle at 12% 0%, ${selectedLandmark.color}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))`,
+                      borderColor: `${selectedLandmark.color}24`,
+                      WebkitBackdropFilter: "blur(20px)",
+                      boxShadow: "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <ArrowRight size={16} />
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                }}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onBackFromMoon()
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-150",
+                  "backdrop-blur-[20px] border text-white/60",
+                  "hover:border-[rgba(100,160,255,0.35)] hover:text-white/95",
+                )}
+                style={{
+                  background: "linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))",
+                  borderColor: "rgba(255,255,255,0.03)",
+                  WebkitBackdropFilter: "blur(20px)",
+                  boxShadow: "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
+                }}
+              >
+                <ArrowLeft size={15} />
+                {`Back to ${selected.name.replace(/\s*Planet\s*$/i, "")}`}
+              </button>
+            </div>
+          )}
 
           {!isMobile && (
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-none text-white/45 text-xs tracking-wide">
-              Drag to orbit · scroll to zoom
+              Arrow keys switch moons · drag to orbit · scroll to zoom
             </div>
           )}
         </>
@@ -824,7 +1036,7 @@ export default function UIOverlay({
       {/* Social links */}
       <div
         className={cn(
-          "absolute flex pointer-events-auto",
+          "absolute z-[120] flex pointer-events-auto",
           isMobile ? "bottom-3 right-3 gap-2" : "bottom-8 right-8 gap-3",
         )}
       >
@@ -835,24 +1047,38 @@ export default function UIOverlay({
       {/* Pause / freeze toggle (also: spacebar, or click the sun) + music toggle */}
       <div
         className={cn(
-          "absolute flex items-center pointer-events-auto",
+          "absolute z-[120] flex items-center pointer-events-auto",
           isMobile ? "bottom-3 left-3 gap-2" : "bottom-8 left-8 gap-3",
         )}
       >
         <BackgroundMusic />
         <button
-          onClick={onTogglePause}
+          type="button"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+          }}
+          onTouchStart={(event) => {
+            event.stopPropagation()
+          }}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            onTogglePause()
+          }}
           aria-label={paused ? "Resume orbital motion" : "Freeze orbital motion"}
           title={paused ? "Resume (space)" : "Freeze (space)"}
           className="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-150
-            bg-[rgba(4,6,20,0.55)] backdrop-blur-[12px] border text-white/65
+            backdrop-blur-[18px] border text-white/65
             hover:text-white/95"
           style={{
-            WebkitBackdropFilter: "blur(12px)",
-            borderColor: paused ? "rgba(255,200,80,0.5)" : "rgba(255,255,255,0.10)",
+            background: paused
+              ? "radial-gradient(circle at 12% 0%, rgba(255,200,80,0.20), transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.042), rgba(255,255,255,0.008) 52%, rgba(255,255,255,0.045))"
+              : "linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))",
+            WebkitBackdropFilter: "blur(18px)",
+            borderColor: paused ? "rgba(255,200,80,0.28)" : "rgba(255,255,255,0.03)",
             boxShadow: paused
-              ? "0 0 18px rgba(255,200,80,0.25), 0 0 0 1px rgba(255,200,80,0.25)"
-              : "none",
+              ? "0 0 18px rgba(255,200,80,0.14), 0 12px 24px rgba(0,0,0,0.12)"
+              : "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
           }}
         >
           {paused ? <Play size={16} /> : <Pause size={16} />}

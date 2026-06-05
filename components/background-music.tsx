@@ -1,7 +1,7 @@
 "use client"
 
 import { Volume2, VolumeX } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
 
 interface BackgroundMusicProps {
   src?: string
@@ -16,57 +16,122 @@ export default function BackgroundMusic({
 }: BackgroundMusicProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [muted, setMuted] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
 
-  // On first user interaction, directly call play() on the audio element.
-  // Browsers require a user gesture before allowing audio — calling play()
-  // inside the gesture handler satisfies that requirement.
+  const playAudio = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio || muted) return
+
+    audio.volume = volume
+    audio.loop = true
+    audio.muted = false
+    audio
+      .play()
+      .then(() => setIsPlaying(true))
+      .catch(() => setIsPlaying(false))
+  }, [muted, volume])
+
   useEffect(() => {
+    let disposed = false
+
     const tryPlay = () => {
-      const a = audioRef.current
-      if (!a) return
-      a.volume = volume
-      a.loop = true
-      a.play().catch(() => {})
+      const audio = audioRef.current
+      if (!audio || muted) return
+
+      audio.volume = volume
+      audio.loop = true
+      audio.muted = false
+      audio
+        .play()
+        .then(() => {
+          if (disposed) return
+          setIsPlaying(true)
+          window.removeEventListener("pointerdown", tryPlay)
+          window.removeEventListener("touchstart", tryPlay)
+          window.removeEventListener("click", tryPlay)
+          window.removeEventListener("keydown", tryPlay)
+        })
+        .catch(() => setIsPlaying(false))
     }
-    window.addEventListener("pointerdown", tryPlay, { once: true })
-    window.addEventListener("keydown", tryPlay, { once: true })
+
+    window.addEventListener("pointerdown", tryPlay)
+    window.addEventListener("touchstart", tryPlay)
+    window.addEventListener("click", tryPlay)
+    window.addEventListener("keydown", tryPlay)
+
     return () => {
+      disposed = true
       window.removeEventListener("pointerdown", tryPlay)
+      window.removeEventListener("touchstart", tryPlay)
+      window.removeEventListener("click", tryPlay)
       window.removeEventListener("keydown", tryPlay)
     }
-  }, [volume])
+  }, [muted, volume])
 
-  // Sync mute/unmute toggle with actual playback
   useEffect(() => {
-    const a = audioRef.current
-    if (!a) return
+    const audio = audioRef.current
+    if (!audio) return
+
     if (muted) {
-      a.pause()
+      audio.pause()
+      setIsPlaying(false)
     } else {
-      a.play().catch(() => {})
+      playAudio()
     }
-  }, [muted])
+  }, [muted, playAudio])
+
+  const handleToggle = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const audio = audioRef.current
+    if (!audio) return
+
+    if (muted) {
+      setMuted(false)
+      return
+    }
+
+    if (audio.paused || !isPlaying) {
+      playAudio()
+      return
+    }
+
+    setMuted(true)
+  }
+
+  const shouldShowPlay = muted || !isPlaying
 
   return (
     <>
-      <audio ref={audioRef} src={src} loop preload="auto" />
+      <audio ref={audioRef} src={src} loop preload="auto" playsInline />
       {!hideToggle && (
         <button
-          onClick={() => setMuted((m) => !m)}
-          aria-label={muted ? "Unmute background music" : "Mute background music"}
-          title={muted ? "Unmute" : "Mute"}
+          type="button"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+          }}
+          onTouchStart={(event) => {
+            event.stopPropagation()
+          }}
+          onClick={handleToggle}
+          aria-label={shouldShowPlay ? "Play background music" : "Mute background music"}
+          title={shouldShowPlay ? "Play music" : "Mute"}
           className="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-150
-            bg-[rgba(4,6,20,0.55)] backdrop-blur-[12px] border text-white/65
+            backdrop-blur-[18px] border text-white/65
             hover:text-white/95"
           style={{
-            WebkitBackdropFilter: "blur(12px)",
-            borderColor: muted ? "rgba(255,255,255,0.10)" : "rgba(140,200,255,0.45)",
-            boxShadow: muted
-              ? "none"
-              : "0 0 18px rgba(140,200,255,0.22), 0 0 0 1px rgba(140,200,255,0.22)",
+            background: shouldShowPlay
+              ? "linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.038))"
+              : "radial-gradient(circle at 12% 0%, rgba(140,200,255,0.20), transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.042), rgba(255,255,255,0.008) 52%, rgba(255,255,255,0.045))",
+            WebkitBackdropFilter: "blur(18px)",
+            borderColor: shouldShowPlay ? "rgba(255,255,255,0.03)" : "rgba(140,200,255,0.28)",
+            boxShadow: shouldShowPlay
+              ? "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)"
+              : "0 0 18px rgba(140,200,255,0.14), 0 12px 24px rgba(0,0,0,0.12)",
           }}
         >
-          {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          {shouldShowPlay ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
       )}
     </>
