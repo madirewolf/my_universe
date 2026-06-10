@@ -34,6 +34,11 @@ function easeInCubic(t: number): number {
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
+// Decelerating ease — starts with velocity, brakes into the end. Used for
+// the post-cut arrival so the motion feels continuous through the cut.
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3)
+}
 
 const RIFT_WORLD_POS = new THREE.Vector3(0, 16, -75)
 const RIFT_OVERHEAD = new THREE.Vector3(0, 52, 0)
@@ -45,6 +50,72 @@ const ORIGIN = new THREE.Vector3(0, 0, 0)
 const RIFT_NEAR_DIST = 0.4
 // Reused scratch Vector3 for the lookAt lerp — avoids per-frame allocations.
 const _lookAt = new THREE.Vector3()
+
+// Where the camera settles in each mode. Shared by the isTransitioning lerp
+// (deep links) and the mode-cut arrival glide.
+const SETTLE_POS = {
+  system: () => new THREE.Vector3(0, 52, 0),
+  // Detail views deliberately settle further out than they used to — the
+  // user wanted the closest zoom point "less close".
+  planet: (isMobile: boolean) => new THREE.Vector3(0, 0, isMobile ? 21 : 15),
+  moon: (isMobile: boolean) => new THREE.Vector3(0, isMobile ? 21 : 12, 0.5),
+}
+
+// ── Mode-cut transitions (system↔planet↔moon) ───────────────────────────────
+// Pure camera moves, no overlay (the rift keeps its warp; these stay simple).
+//
+// Big→small: pan/recenter onto the clicked object, then dive until it FILLS
+// the frame. The scene swap happens behind the object itself — a match cut:
+// "planet filling the frame" cuts to "detail planet filling the frame" —
+// then the camera eases back out to the settle distance. The camera tracks
+// the object live while it orbits, so the pan stays centered.
+//
+// Small→big: one continuous slow zoom-out. Pull back until the scene's
+// center object is small, cut, arrive already moving outward, and glide the
+// rest of the way to the settle position. The persistent star/nebula
+// background carries the cut.
+const MODE_CUT = {
+  DIVE_OUT: 1.05, // dive toward the clicked object
+  DIVE_IN: 1.35, // post-cut ease back out to settle
+  ZOOM_OUT: 1.35, // pull back from the small scene
+  ZOOM_IN: 1.5, // post-cut glide out to settle
+  /** Cut distance = FILL_FACTOR × object radius → object just fills the frame. */
+  FILL_FACTOR: 1.9,
+  /** Safety: never hold the cut longer than this many frames. */
+  MAX_HOLD_FRAMES: 30,
+} as const
+
+// Object radii used to compute match-cut distances.
+const PLANET_DETAIL_RADIUS = 4 // <Planet isDetailView size={4}>
+const MOON_CRYSTAL_RADIUS = 1.55 // MoonView's central data crystal
+const MOON_ORBIT_RADIUS = 0.36 // crystal moons orbiting a detail planet
+
+interface ModeCutState {
+  phase: "idle" | "out" | "cut" | "in"
+  /** clock time the current phase started; -1 = lazy init on next frame. */
+  start: number
+  /** 'out': captured camera position. 'in': post-cut arrival position. */
+  fromPos: THREE.Vector3
+  /** Dive/zoom anchor. Re-read from targetObj each frame while it orbits. */
+  targetPos: THREE.Vector3
+  targetObj: THREE.Object3D | null
+  /** Camera-to-anchor distance at the cut. */
+  cutDist: number
+  /** Camera-to-origin distance right after the cut. */
+  arriveDist: number
+  settlePos: THREE.Vector3
+  /** Mode we're heading to — the cut releases once this mode is mounted. */
+  destMode: Mode
+  /** Frames spent holding at the cut (lets React mount the new scene). */
+  holdFrames: number
+  outDur: number
+  inDur: number
+  commit: (() => void) | null
+}
+
+// Scratch vectors — avoid per-frame allocations.
+const _approach = new THREE.Vector3()
+const _dir = new THREE.Vector3()
 
 function landmarkKey(landmark: Landmark): string {
   return `${landmark.name}::${landmark.category}`
@@ -65,6 +136,7 @@ function CameraController({
   isTransitioning,
   setIsTransitioning,
   riftState,
+  modeWarp,
   onSwapUniverse,
   onStageOut,
   onCinematicComplete,
@@ -74,6 +146,7 @@ function CameraController({
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
   riftState: MutableRefObject<RiftCinematicState>
+  modeWarp: MutableRefObject<ModeCutState>
   onSwapUniverse: () => void
   onStageOut: () => void
   onCinematicComplete: () => void
@@ -201,16 +274,85 @@ function CameraController({
       return
     }
 
+    // ── Mode-cut transitions (system↔planet↔moon) ─────────────────────────
+    // See the MODE_CUT block above for the full choreography.
+    const mw = modeWarp.current
+    if (mw.phase !== "idle") {
+      if (mw.start < 0) {
+        mw.start = state.clock.elapsedTime
+        if (mw.phase === "out") mw.fromPos.copy(camera.position)
+      }
+      const t = state.clock.elapsedTime - mw.start
+
+      if (mw.phase === "out") {
+        // Track the live object — planets/moons keep orbiting while we move.
+        if (mw.targetObj) mw.targetObj.getWorldPosition(mw.targetPos)
+        _dir.copy(mw.fromPos).sub(mw.targetPos)
+        if (_dir.lengthSq() < 1e-6) _dir.set(0, 0, 1)
+        _dir.normalize()
+        _approach.copy(mw.targetPos).addScaledVector(_dir, mw.cutDist)
+
+        const k = easeInOutCubic(Math.min(t / mw.outDur, 1))
+        camera.position.lerpVectors(mw.fromPos, _approach, k)
+        // Recenter early (pan completes in the first ~half), then it's a
+        // pure zoom onto the object for the rest of the move.
+        _lookAt.lerpVectors(ORIGIN, mw.targetPos, Math.min(k * 2.2, 1))
+        camera.lookAt(_lookAt)
+
+        if (t >= mw.outDur) {
+          // Swap the scene behind the object (big→small: it fills the
+          // frame; small→big: everything is tiny). Camera HOLDS here until
+          // the destination mode is actually mounted, so the new scene's
+          // first visible frame already has the camera at its arrival
+          // position — no flash of a half-set-up view.
+          mw.commit?.()
+          mw.commit = null
+          mw.targetObj = null
+          mw.phase = "cut"
+          mw.holdFrames = 0
+          mw.fromPos.copy(camera.position)
+        }
+      } else if (mw.phase === "cut") {
+        camera.position.copy(mw.fromPos)
+        camera.lookAt(mw.targetPos)
+        mw.holdFrames += 1
+
+        if (
+          (mode === mw.destMode && mw.holdFrames >= 1) ||
+          mw.holdFrames > MODE_CUT.MAX_HOLD_FRAMES
+        ) {
+          mw.phase = "in"
+          mw.start = state.clock.elapsedTime
+          _dir.copy(mw.settlePos).normalize()
+          mw.fromPos.copy(_dir).multiplyScalar(mw.arriveDist)
+          camera.position.copy(mw.fromPos)
+          camera.lookAt(ORIGIN)
+        }
+      } else {
+        // Arrival — starts with velocity (continuing the cut's motion) and
+        // brakes into the settle position.
+        const k = easeOutCubic(Math.min(t / mw.inDur, 1))
+        camera.position.lerpVectors(mw.fromPos, mw.settlePos, k)
+        camera.lookAt(ORIGIN)
+
+        if (t >= mw.inDur) {
+          mw.phase = "idle"
+          mw.start = -1
+        }
+      }
+      return
+    }
+
     if (!isTransitioning) return
     if (mode === "moon") {
       // Default top-down. Sprite Html cards billboard to face the camera so
       // they stay readable regardless of angle. Tiny z offset breaks the
       // OrbitControls gimbal-lock singularity at polar angle 0.
-      target.current.set(0, isMobile ? 18 : 12, 0.5)
+      target.current.copy(SETTLE_POS.moon(isMobile))
     } else if (mode === "planet") {
-      target.current.set(0, 0, isMobile ? 18 : 12)
+      target.current.copy(SETTLE_POS.planet(isMobile))
     } else {
-      target.current.set(0, 52, 0)
+      target.current.copy(SETTLE_POS.system())
     }
     camera.position.lerp(target.current, 0.04)
     camera.lookAt(0, 0, 0)
@@ -440,6 +582,23 @@ export default function SolarPortfolio() {
     stageStart: -1,
     ready: true,
   })
+  // Mode-cut transition state. Ref drives the camera without a DOM cover;
+  // the clicked object itself masks the scene swap (match cut).
+  const modeWarp = useRef<ModeCutState>({
+    phase: "idle",
+    start: -1,
+    fromPos: new THREE.Vector3(),
+    targetPos: new THREE.Vector3(),
+    targetObj: null,
+    cutDist: 1,
+    arriveDist: 1,
+    settlePos: new THREE.Vector3(),
+    destMode: "system",
+    holdFrames: 0,
+    outDur: MODE_CUT.DIVE_OUT,
+    inDur: MODE_CUT.DIVE_IN,
+    commit: null,
+  })
   const systemGroupRefs = useRef<Record<Universe, THREE.Group | null>>({
     professional: null,
     personal: null,
@@ -537,18 +696,79 @@ export default function SolarPortfolio() {
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
   }, [universe])
 
-  const handlePlanetClick = (idx: number) => {
-    setSelectedPlanet(idx)
-    replaceQuery(idx, null)
-    setPlanetRotation({ lon: 0, lat: 0 })
-    setIsTransitioning(true)
+  /**
+   * Kick off a mode-cut transition. `targetObj` (or the origin) is the
+   * dive/zoom anchor; the scene swap (`commit`) runs at the cut point.
+   */
+  const startModeCut = (opts: {
+    targetObj: THREE.Object3D | null
+    cutDist: number
+    arriveDist: number
+    settlePos: THREE.Vector3
+    destMode: Mode
+    outDur: number
+    inDur: number
+    commit: () => void
+  }) => {
+    if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+    setHoveredPlanet(null)
+    const mw = modeWarp.current
+    mw.phase = "out"
+    mw.start = -1
+    mw.targetObj = opts.targetObj
+    if (opts.targetObj) {
+      opts.targetObj.getWorldPosition(mw.targetPos)
+    } else {
+      mw.targetPos.copy(ORIGIN)
+    }
+    mw.cutDist = opts.cutDist
+    mw.arriveDist = opts.arriveDist
+    mw.settlePos.copy(opts.settlePos)
+    mw.destMode = opts.destMode
+    mw.holdFrames = 0
+    mw.outDur = opts.outDur
+    mw.inDur = opts.inDur
+    mw.commit = opts.commit
   }
 
-  const handleLandmarkClick = (landmark: Landmark) => {
-    setSelectedLandmark(landmark)
+  const handlePlanetClick = (idx: number, object: THREE.Object3D) => {
+    const planet = planets[idx]
+    if (!planet) return
+    // Dive until the planet fills the frame; cut to the detail planet
+    // filling the frame the same way, then ease out to the settle distance.
+    startModeCut({
+      targetObj: object,
+      cutDist: MODE_CUT.FILL_FACTOR * planet.size,
+      arriveDist: MODE_CUT.FILL_FACTOR * PLANET_DETAIL_RADIUS,
+      settlePos: SETTLE_POS.planet(isMobile),
+      destMode: "planet",
+      outDur: MODE_CUT.DIVE_OUT,
+      inDur: MODE_CUT.DIVE_IN,
+      commit: () => {
+        setSelectedPlanet(idx)
+        replaceQuery(idx, null)
+        setPlanetRotation({ lon: 0, lat: 0 })
+      },
+    })
+  }
+
+  const handleLandmarkClick = (landmark: Landmark, object: THREE.Object3D) => {
     const moonIndex = selected ? findLandmarkIndex(selected.landmarks, landmark) : -1
-    if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex)
-    setIsTransitioning(true)
+    // Dive into the little crystal moon; cut to the moon view's data
+    // crystal filling the frame the same way.
+    startModeCut({
+      targetObj: object,
+      cutDist: MODE_CUT.FILL_FACTOR * MOON_ORBIT_RADIUS,
+      arriveDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
+      settlePos: SETTLE_POS.moon(isMobile),
+      destMode: "moon",
+      outDur: MODE_CUT.DIVE_OUT,
+      inDur: MODE_CUT.DIVE_IN,
+      commit: () => {
+        setSelectedLandmark(landmark)
+        if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex)
+      },
+    })
   }
 
   const handleMoonStep = useCallback((direction: -1 | 1) => {
@@ -559,33 +779,70 @@ export default function SolarPortfolio() {
 
     const nextIndex =
       (currentIndex + direction + selected.landmarks.length) % selected.landmarks.length
-    setSelectedLandmark(selected.landmarks[nextIndex])
-    if (selectedPlanet !== null) replaceQuery(selectedPlanet, nextIndex)
-    setIsTransitioning(true)
-  }, [replaceQuery, selected, selectedLandmark, selectedPlanet])
+    const next = selected.landmarks[nextIndex]
+    // Dive through the data crystal, come out at the next moon's crystal.
+    startModeCut({
+      targetObj: null,
+      cutDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
+      arriveDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
+      settlePos: SETTLE_POS.moon(isMobile),
+      destMode: "moon",
+      outDur: MODE_CUT.DIVE_OUT,
+      inDur: MODE_CUT.DIVE_IN,
+      commit: () => {
+        setSelectedLandmark(next)
+        if (selectedPlanet !== null) replaceQuery(selectedPlanet, nextIndex)
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaceQuery, selected, selectedLandmark, selectedPlanet, isMobile])
 
   const handlePrevMoon = useCallback(() => handleMoonStep(-1), [handleMoonStep])
   const handleNextMoon = useCallback(() => handleMoonStep(1), [handleMoonStep])
 
   const handleBackFromMoon = () => {
-    setSelectedLandmark(null)
-    if (selectedPlanet !== null) replaceQuery(selectedPlanet, null)
-    setIsTransitioning(true)
+    // Small→big: slow zoom-out from the moon scene; cut while everything is
+    // small; arrive close over the planet still moving outward, glide to 15.
+    startModeCut({
+      targetObj: null,
+      cutDist: 30,
+      arriveDist: 9.5,
+      settlePos: SETTLE_POS.planet(isMobile),
+      destMode: "planet",
+      outDur: MODE_CUT.ZOOM_OUT,
+      inDur: MODE_CUT.ZOOM_IN,
+      commit: () => {
+        setSelectedLandmark(null)
+        if (selectedPlanet !== null) replaceQuery(selectedPlanet, null)
+      },
+    })
   }
 
   const handleBack = () => {
-    setSelectedPlanet(null)
-    setSelectedLandmark(null)
-    setHoveredPlanet(null)
-    replaceQuery(null)
-    setIsTransitioning(true)
+    // Small→big: slow zoom-out from the planet scene; cut far out; arrive
+    // over the system still moving outward, glide up to the overhead view.
+    startModeCut({
+      targetObj: null,
+      cutDist: 38,
+      arriveDist: 34,
+      settlePos: SETTLE_POS.system(),
+      destMode: "system",
+      outDur: MODE_CUT.ZOOM_OUT,
+      inDur: MODE_CUT.ZOOM_IN,
+      commit: () => {
+        setSelectedPlanet(null)
+        setSelectedLandmark(null)
+        setHoveredPlanet(null)
+        replaceQuery(null)
+      },
+    })
   }
 
   const handleEnterRift = () => {
-    // Guard on the ref, not riftStage state — the ref is the per-frame truth
+    // Guard on the refs, not React state — the refs are the per-frame truth
     // and can't go stale in a closure, so re-entry mid-cinematic (double
     // click, double-fired handler) is impossible.
-    if (riftState.current.stage !== "idle") return
+    if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setHoveredPlanet(null)
@@ -656,6 +913,7 @@ export default function SolarPortfolio() {
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
             riftState={riftState}
+            modeWarp={modeWarp}
             onSwapUniverse={handleSwapUniverse}
             onStageOut={handleStageOut}
             onCinematicComplete={handleCinematicComplete}
@@ -726,11 +984,14 @@ export default function SolarPortfolio() {
             enablePan={false}
             target={[0, 0, 0]}
             enableZoom
-            enableRotate
+            // Mobile moon view: one-finger vertical swipes step through the
+            // info sections (see moon-view.tsx), so rotation is disabled
+            // there. Pinch zoom still works.
+            enableRotate={!(mode === "moon" && isMobile)}
             enableDamping
             dampingFactor={0.055}
-            minDistance={mode === "system" ? 30 : mode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 12 : 8)}
-            maxDistance={mode === "system" ? 90 : mode === "moon" ? (isMobile ? 24 : 16) : (isMobile ? 28 : 20)}
+            minDistance={mode === "system" ? 30 : mode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 14 : 10)}
+            maxDistance={mode === "system" ? 90 : mode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 30 : 24)}
             autoRotate={mode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
             maxPolarAngle={mode === "system" ? Math.PI / 2.2 : Math.PI}

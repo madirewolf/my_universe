@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber"
 import { Html } from "@react-three/drei"
 import * as THREE from "three"
 import type { Group, Mesh } from "three"
+import type { ThreeEvent } from "@react-three/fiber"
 import { getPlanetMaterial } from "@/lib/shaders"
 import type { Landmark, PlanetShape } from "@/lib/constants"
 
@@ -21,13 +22,14 @@ interface PlanetProps {
   seed?: number
   shape?: PlanetShape
   paused?: boolean
-  onClick?: () => void
+  onClick?: (event: ThreeEvent<MouseEvent>) => void
   onHover?: (hovered: boolean) => void
   // Detail mode props
   isDetailView?: boolean
   lonOffset?: number
   latOffset?: number
-  onLandmarkClick?: (landmark: Landmark) => void
+  /** object = the clicked moon mesh — tracked live during the dive. */
+  onLandmarkClick?: (landmark: Landmark, object: THREE.Object3D) => void
   landmarks?: Landmark[]
 }
 
@@ -411,7 +413,7 @@ export default function Planet({
                   geometry={moonGeoms[index]}
                   onClick={(e) => {
                     e.stopPropagation()
-                    onLandmarkClick?.(landmark)
+                    onLandmarkClick?.(landmark, e.object)
                   }}
                   onPointerOver={(e) => {
                     e.stopPropagation()

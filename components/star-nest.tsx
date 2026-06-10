@@ -116,6 +116,18 @@ export default function StarNest({
   const prevFrameRef = useRef<number | null>(null)
   const smoothMouseRef = useRef(new THREE.Vector2(0.5, 0.5))
   const targetMouseRef = useRef(new THREE.Vector2(0.5, 0.5))
+  // Speed envelope for the fractal boil. The perceived "fast at first, dead
+  // after you touch it" came from camera motion (initial damping settle,
+  // drags) feeding uMouse, then stopping almost instantly once OrbitControls
+  // damping ran out. Instead: uTime advances at `energy` × wall speed —
+  // starts hot, camera motion kicks it back up, and it decays SLOWLY toward
+  // a floor that keeps the background visibly alive forever.
+  const ENERGY_START = 2.4
+  const ENERGY_FLOOR = 1.15
+  const ENERGY_MAX = 2.6
+  const ENERGY_HALF_LIFE = 3.5 // seconds for the boost to decay halfway
+  const energyRef = useRef(ENERGY_START)
+  const prevQuatRef = useRef<THREE.Quaternion | null>(null)
 
   useFrame(() => {
     if (!matRef.current) return
@@ -124,7 +136,23 @@ export default function StarNest({
     const prev = prevFrameRef.current ?? now
     const dt = Math.min(now - prev, 0.05)
     prevFrameRef.current = now
-    timeRef.current += dt
+
+    // Camera angular motion this frame (drag, damping, autorotate) → kick.
+    const quat = camera.quaternion
+    if (prevQuatRef.current) {
+      const angle = 2 * Math.acos(Math.min(1, Math.abs(quat.dot(prevQuatRef.current))))
+      energyRef.current = Math.min(ENERGY_MAX, energyRef.current + angle * 8)
+    } else {
+      prevQuatRef.current = new THREE.Quaternion()
+    }
+    prevQuatRef.current.copy(quat)
+
+    // Exponential decay toward the floor — never fully still.
+    energyRef.current =
+      ENERGY_FLOOR +
+      (energyRef.current - ENERGY_FLOOR) * Math.pow(0.5, dt / ENERGY_HALF_LIFE)
+
+    timeRef.current += dt * energyRef.current
 
     const q = camera.quaternion
     targetMouseRef.current.set(

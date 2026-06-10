@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef } from "react"
+import * as THREE from "three"
 import type { Group } from "three"
 import Planet from "./planet"
 import Sun from "./sun"
@@ -11,7 +12,8 @@ interface SolarSystemProps {
   sunVariant: "warm" | "nebula"
   paused?: boolean
   onSunClick?: () => void
-  onPlanetClick: (planetIndex: number) => void
+  /** object = the clicked planet mesh — tracked live during the dive. */
+  onPlanetClick: (planetIndex: number, object: THREE.Object3D) => void
   onPlanetHover: (planetIndex: number | null) => void
 }
 
@@ -49,7 +51,10 @@ export default function SolarSystem({
           shape={planet.shape}
           seed={index * 17.31}
           paused={paused}
-          onClick={() => onPlanetClick(index)}
+          onClick={(e) => {
+            e.stopPropagation()
+            onPlanetClick(index, e.object)
+          }}
           onHover={(hovered) => onPlanetHover(hovered ? index : null)}
         />
       ))}

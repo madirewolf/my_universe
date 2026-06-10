@@ -271,9 +271,49 @@ function MoonTerrain({
           flatShading
         />
       </mesh>
+      {/* Soft rim glow — keeps the terrain disc from reading as a hard
+          black coin against the bright space backdrop. Two stacked additive
+          rings: a wide faint halo and a tighter, brighter edge. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.56, 0]}>
+        <ringGeometry args={[radius * 0.92, radius * 1.3, 96]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.07}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.545, 0]}>
+        <ringGeometry args={[radius * 0.985, radius * 1.035, 128]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.32}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {/* Center glow pool under the data crystal */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.52, 0]}>
+        <circleGeometry args={[2.4, 48]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.1}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.535, 0]}>
         <ringGeometry args={[radius * 0.78, radius * 0.785, 128]} />
-        <meshBasicMaterial color={color} transparent opacity={0.16} />
+        <meshBasicMaterial color={color} transparent opacity={0.24} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.535, 0]}>
+        <ringGeometry args={[radius * 0.5, radius * 0.503, 128]} />
+        <meshBasicMaterial color={color} transparent opacity={0.14} />
       </mesh>
       {craters.map((crater, index) => (
         <mesh key={`crater-${index}`} position={[crater.x, -2.52, crater.z]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -542,7 +582,12 @@ function SectionOrbitMenu({
   onMenuLeave: () => void
 }) {
   return (
-    <Html fullscreen pointerEvents="none" zIndexRange={[40, 0]}>
+    // NOTE: drei's `pointerEvents` prop only works in transform mode — for
+    // fullscreen mode the container div defaults to pointer-events:auto and
+    // silently swallows every click meant for layers below (this is what
+    // broke the portal links). The style prop is what actually lands on the
+    // fullscreen container.
+    <Html fullscreen zIndexRange={[40, 0]} style={{ pointerEvents: "none" }}>
       <div
         style={{
           position: "absolute",
@@ -841,9 +886,11 @@ function InfoDeck({
       }
 
   return (
-    <Html fullscreen pointerEvents="none" zIndexRange={[18, 0]}>
+    // Same drei gotcha as SectionOrbitMenu: pointer-events none must go via
+    // `style` to reach the fullscreen container.
+    <Html fullscreen zIndexRange={[18, 0]} style={{ pointerEvents: "none" }}>
       <div style={shell}>
-        <div style={panel}>
+        <div style={panel} data-moon-swipe-ignore>
           <div
             style={{
               borderRadius: isMobile ? 14 : 16,
@@ -1043,6 +1090,55 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
   useEffect(() => {
     setActiveIndex(0)
   }, [landmark.name, sections.length])
+
+  // Mobile: vertical swipe steps through the sections (swipe up = next,
+  // swipe down = previous) — more intuitive than aiming at the orbit menu.
+  // Swipes that start inside the scrollable info panel keep native scrolling
+  // (it carries data-moon-swipe-ignore). One-finger rotate is disabled for
+  // the mobile moon view in solar-portfolio.tsx so swipes don't fight the
+  // camera.
+  useEffect(() => {
+    if (!isMobile) return
+
+    let startX = 0
+    let startY = 0
+    let startTime = 0
+    let tracking = false
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return
+      const target = event.target as Element | null
+      if (target?.closest?.("[data-moon-swipe-ignore]")) return
+      tracking = true
+      startX = event.touches[0].clientX
+      startY = event.touches[0].clientY
+      startTime = performance.now()
+    }
+
+    const onTouchEnd = (event: TouchEvent) => {
+      if (!tracking) return
+      tracking = false
+      const touch = event.changedTouches[0]
+      if (!touch) return
+      const dx = touch.clientX - startX
+      const dy = touch.clientY - startY
+      const elapsed = performance.now() - startTime
+      // Quick, predominantly-vertical flicks only.
+      if (elapsed > 650) return
+      if (Math.abs(dy) < 56 || Math.abs(dy) < Math.abs(dx) * 1.4) return
+      const step = dy < 0 ? 1 : -1
+      setActiveIndex((index) =>
+        Math.min(sections.length - 1, Math.max(0, index + step)),
+      )
+    }
+
+    window.addEventListener("touchstart", onTouchStart, { passive: true })
+    window.addEventListener("touchend", onTouchEnd, { passive: true })
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart)
+      window.removeEventListener("touchend", onTouchEnd)
+    }
+  }, [isMobile, sections.length])
 
   useEffect(() => {
     setMenuVisible(isMobile)
