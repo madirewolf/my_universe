@@ -14,10 +14,11 @@ import Nebula from "./nebula"
 import SpaceAmbience from "./space-ambience"
 import CosmicDust from "./cosmic-dust"
 import Rift from "./rift"
-import RiftCorridor, {
+import RiftWarpOverlay, {
   RIFT_TIMING,
   type RiftCinematicState,
-} from "./rift-corridor"
+  type RiftStage,
+} from "./rift-warp-overlay"
 import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
 
@@ -66,6 +67,7 @@ function CameraController({
   setIsTransitioning,
   riftState,
   onSwapUniverse,
+  onStageOut,
   onCinematicComplete,
 }: {
   mode: Mode
@@ -74,6 +76,7 @@ function CameraController({
   setIsTransitioning: (v: boolean) => void
   riftState: MutableRefObject<RiftCinematicState>
   onSwapUniverse: () => void
+  onStageOut: () => void
   onCinematicComplete: () => void
 }) {
   const { camera } = useThree()
@@ -86,25 +89,28 @@ function CameraController({
     const sr = riftState.current
 
     // ── Rift cinematic takes priority ─────────────────────────────────────
-    // Stage machine driven by riftState.current (see rift-corridor.tsx for
-    // timing constants).
+    // Stage machine driven by riftState.current (timing constants live in
+    // rift-warp-overlay.tsx). The warp visual itself is a DOM overlay with
+    // compositor-driven CSS animations — it keeps looping even if this
+    // thread stalls (shader compile at the swap), so it can never freeze.
     //   • 'in'   (2.5s): two sub-phases, sequenced.
     //       ROTATE (0.0-0.9s): camera holds at start, gaze smoothly pans
-    //                          ORIGIN → RIFT_WORLD_POS. Corridor invisible.
+    //                          ORIGIN → RIFT_WORLD_POS. Overlay invisible.
     //                          You see the camera deliberately swing onto
     //                          the rift before any motion.
     //       ZOOM   (0.9-2.5s): camera accelerates toward nearRift along
     //                          the line through the rift, gaze locked on
-    //                          the rift. Corridor fades in over the last
-    //                          0.7s of zoom (see RIFT_TIMING.IN_FADE_*).
-    //   • 'peak' (var):    camera held at rift, corridor at full opacity.
+    //                          the rift. Overlay fades in over the last
+    //                          ~0.5s of zoom (CSS transition-delay —
+    //                          RIFT_TIMING.COVER_DELAY / COVER_FADE).
+    //   • 'peak' (var):    camera held at rift, overlay at full opacity.
     //                      Universe swap fires when entering this stage.
     //                      Holds until riftState.ready flips true — set
     //                      by RiftCompileGate after gl.compileAsync
     //                      resolves (i.e. the new universe's shaders are
     //                      actually compiled). Min floor = 0.5s.
-    //   • 'out'  (1.8s):   smooth pull OUT to overhead. Corridor fades
-    //                      out over first 1.5s, crossfades into new rift.
+    //   • 'out'  (1.8s):   smooth pull OUT to overhead. Overlay fades
+    //                      out over first 1.4s, crossfades into new rift.
     if (sr.stage !== "idle") {
       if (sr.stageStart < 0) {
         sr.stageStart = state.clock.elapsedTime
@@ -138,8 +144,8 @@ function CameraController({
           camera.position.lerpVectors(stageStartPos.current!, nearRift, k)
           camera.lookAt(RIFT_WORLD_POS)
         } else {
-          // 'in' → 'peak'. Fire the universe swap (corridor is at full
-          // opacity now, so it hides the actual mesh-tree swap).
+          // 'in' → 'peak'. Fire the universe swap (the warp overlay is at
+          // full opacity now, so it hides the actual mesh-tree swap).
           sr.stage = "peak"
           sr.stageStart = state.clock.elapsedTime
           onSwapUniverse()
@@ -153,6 +159,7 @@ function CameraController({
           sr.stage = "out"
           sr.stageStart = state.clock.elapsedTime
           stageStartPos.current = nearRift.clone()
+          onStageOut()
         }
       } else if (sr.stage === "out") {
         const revealRift = RIFT_WORLD_POS.clone().sub(
@@ -225,20 +232,24 @@ function RenderHeartbeat() {
 /**
  * ShaderWarmer
  *
- * Mounts inside the Canvas. On first mount calls `gl.compileAsync(scene,
- * camera)` which iterates ALL materials in the scene (incl. hidden meshes
- * via scene.traverse, regardless of visibility) and compiles their shader
- * programs to an internal 1×1 render target.
+ * Fixes the rift-swap freeze on Windows/Chrome (ANGLE → Direct3D).
  *
- * Combined with the dual-mount system-mode JSX below (both universes'
- * SolarSystem + Rift mounted, inactive group set to visible=false), this
- * means by the time the user clicks the rift the OTHER universe's
- * shaders are already cached. The swap then becomes a visibility toggle,
- * not a fresh shader compile, so the corridor stops freezing mid-flight.
+ * The problem: `gl.compile()` / `compileAsync()` do NOT fully prime a shader
+ * program on ANGLE. ANGLE defers final program linking until the FIRST REAL
+ * DRAW CALL with the actual render state (blend mode, depth, etc.). So when
+ * the hidden universe is revealed during the rift swap and draws for the
+ * first time, ANGLE links the program synchronously and stalls the main
+ * thread — freezing the corridor mid-animation.
  *
- * Best-effort: compileAsync resolves async; if the user clicks rift
- * before warm-up finishes, RiftCompileGate (below) acts as a backup
- * gate.
+ * The fix: issue REAL draw calls for both universes at load, to a tiny
+ * offscreen render target the user never sees. A real render forces ANGLE
+ * to compile + link + cache the program for the exact draw state it'll use
+ * on screen. Spread over a handful of early frames so the warm-up itself
+ * doesn't hitch. After that, the rift swap is a pure cache hit.
+ *
+ * frustumCulled is disabled during the warm render so every planet/sun/rift
+ * mesh actually gets draw-called regardless of where it sits relative to the
+ * load-time camera.
  */
 function ShaderWarmer({
   systemGroupRefs,
@@ -246,43 +257,52 @@ function ShaderWarmer({
   systemGroupRefs: MutableRefObject<Record<Universe, THREE.Group | null>>
 }) {
   const { gl, scene, camera } = useThree()
-  useEffect(() => {
-    const groups = Object.values(systemGroupRefs.current).filter(
-      (group): group is THREE.Group => group !== null,
-    )
-    const originalVisibility = groups.map((group) => group.visible)
-    const withAllSystemGroupsVisible = <T,>(fn: () => T): T => {
-      groups.forEach((group) => {
-        group.visible = true
-      })
-      try {
-        return fn()
-      } finally {
-        groups.forEach((group, index) => {
-          group.visible = originalVisibility[index]
-        })
-      }
-    }
+  const framesLeft = useRef(4)
+  const rt = useRef<THREE.WebGLRenderTarget | null>(null)
 
-    const compileAsync = (
-      gl as unknown as {
-        compileAsync?: (s: THREE.Scene, c: THREE.Camera) => Promise<unknown>
-      }
-    ).compileAsync
-    if (typeof compileAsync === "function") {
-      withAllSystemGroupsVisible(() => compileAsync.call(gl, scene, camera)).catch(() => {
-        /* swallow — three.js's program cache is the actual prize */
+  useFrame(() => {
+    if (framesLeft.current <= 0) return
+    const groups = Object.values(systemGroupRefs.current).filter(
+      (g): g is THREE.Group => g !== null,
+    )
+    if (groups.length < 2) return // wait until BOTH universes are mounted
+
+    if (!rt.current) rt.current = new THREE.WebGLRenderTarget(16, 16)
+
+    const prevVis = groups.map((g) => g.visible)
+    const prevTarget = gl.getRenderTarget()
+    const culling = new Map<THREE.Object3D, boolean>()
+
+    // Force-draw both universes: visible + no frustum culling.
+    groups.forEach((g) => {
+      g.visible = true
+      g.traverse((o) => {
+        culling.set(o, o.frustumCulled)
+        o.frustumCulled = false
       })
-    } else {
-      try {
-        withAllSystemGroupsVisible(() => gl.compile(scene, camera))
-      } catch {
-        /* ignore */
-      }
-    }
-    // Run once on mount only — shader compile is one-shot per program.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera, gl, scene, systemGroupRefs])
+    })
+
+    gl.setRenderTarget(rt.current)
+    gl.render(scene, camera) // <- the real draw that ANGLE actually links
+    gl.setRenderTarget(prevTarget)
+
+    // Restore visibility + culling so the on-screen frame is unchanged.
+    groups.forEach((g, i) => {
+      g.visible = prevVis[i]
+    })
+    culling.forEach((fc, o) => {
+      o.frustumCulled = fc
+    })
+
+    framesLeft.current -= 1
+  })
+
+  useEffect(
+    () => () => {
+      rt.current?.dispose()
+    },
+    [],
+  )
   return null
 }
 
@@ -387,10 +407,12 @@ export default function SolarPortfolio() {
   const [selectedLandmark, setSelectedLandmark] = useState<Landmark | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [paused, setPaused] = useState(false)
-  const [riftActive, setRiftActive] = useState(false)
-  // Stage state for the rift cinematic. Mutated in place by CameraController
-  // and read by RiftCorridor — both run in useFrame on the same Canvas, so a
-  // ref keeps them in sync without per-frame React re-renders.
+  // Stage of the rift cinematic, mirrored into React state at each stage
+  // boundary (via CameraController's onSwapUniverse / onStageOut /
+  // onCinematicComplete callbacks) so the DOM warp overlay can react to it.
+  const [riftStage, setRiftStage] = useState<RiftStage>("idle")
+  // Per-frame stage state for the cinematic. Mutated in place by
+  // CameraController inside useFrame — a ref avoids per-frame React renders.
   const riftState = useRef<RiftCinematicState>({
     stage: "idle",
     stageStart: -1,
@@ -538,31 +560,37 @@ export default function SolarPortfolio() {
   }
 
   const handleEnterRift = () => {
-    if (riftActive) return
+    if (riftStage !== "idle") return
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setHoveredPlanet(null)
-    setRiftActive(true)
+    setRiftStage("in")
     // Initialize the cinematic stage. CameraController will pick this up on
     // its next frame and lazy-init the stageStart timestamp from the canvas
     // clock. Universe swap fires when CameraController transitions 'in' →
-    // 'peak'; the corridor sits at full opacity until riftState.ready flips
-    // true, which we schedule ~800ms after the swap.
+    // 'peak'. The DOM warp overlay starts its fade-in immediately via a CSS
+    // transition-delay (RIFT_TIMING.COVER_DELAY), so it goes opaque just
+    // before the swap without needing a mid-stage callback.
     riftState.current = { stage: "in", stageStart: -1, ready: false }
   }
 
   const handleSwapUniverse = () => {
     setUniverse((u) => (u === "professional" ? "personal" : "professional"))
     setIsTransitioning(true)
+    setRiftStage("peak")
     // riftState.ready stays false here. RiftCompileGate (rendered inside
     // Canvas, below) watches the `universe` prop and flips ready=true when
     // WebGLRenderer.compileAsync resolves — i.e. the new universe's shader
-    // programs are actually compiled. The corridor + camera 'peak' stage
+    // programs are actually compiled. The overlay + camera 'peak' stage
     // hold until then, so we never transition into a half-rendered scene.
   }
 
+  const handleStageOut = () => {
+    setRiftStage("out")
+  }
+
   const handleCinematicComplete = () => {
-    setRiftActive(false)
+    setRiftStage("idle")
   }
 
   // (Rotation now driven entirely by the NavDial joystick + the integrator above.)
@@ -604,6 +632,7 @@ export default function SolarPortfolio() {
             setIsTransitioning={setIsTransitioning}
             riftState={riftState}
             onSwapUniverse={handleSwapUniverse}
+            onStageOut={handleStageOut}
             onCinematicComplete={handleCinematicComplete}
           />
           <RiftCompileGate universe={universe} riftState={riftState} />
@@ -666,10 +695,6 @@ export default function SolarPortfolio() {
             <MoonView landmark={selectedLandmark} seed={landmarkSeed} universe={universe} isMobile={isMobile} />
           )}
 
-          {/* Rift transition — lightspeed corridor. Stage machine lives in
-              CameraController; this just renders opacity from riftState. */}
-          <RiftCorridor active={riftActive} riftState={riftState} />
-
           <OrbitControls
             // Pan stays off so rotation is always anchored to the sun (system),
             // the planet (planet detail), or the data crystal (moon).
@@ -688,6 +713,12 @@ export default function SolarPortfolio() {
           />
         </Suspense>
       </Canvas>
+
+      {/* Rift transition — lightspeed warp. DOM + compositor-driven CSS so
+          it keeps animating even while the WebGL thread stalls compiling the
+          new universe's shaders. Sits above the UI (z-150) so the whole swap,
+          including the UI rebrand, happens behind the cover. */}
+      <RiftWarpOverlay stage={riftStage} />
 
       <UIOverlay
         universe={universe}
