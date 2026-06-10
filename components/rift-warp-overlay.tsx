@@ -11,22 +11,40 @@
 // composited layers, which browsers run on the COMPOSITOR thread — the
 // loop keeps spinning even while the main thread is completely blocked.
 //
-// The streak field is built from staggered infinite keyframe loops, so
-// 'peak' can hold for any duration (waiting on the shader compile gate)
-// and the warp stays seamless — there is no timeline to run out of.
+// SEAMLESSNESS: the overlay's base is a bright radial "core" gradient that
+// matches what the rift core looks like when it engulfs the camera. The
+// cover therefore fades in over an almost identical frame (camera diving
+// into the source rift) and fades out over an almost identical frame
+// (camera pinned inside the DESTINATION rift) — both handoffs read as one
+// continuous shot. The base crossfades source → destination palette at the
+// universe swap, hidden behind the streaks.
 //
 // STAGES (state machine lives in CameraController, solar-portfolio.tsx —
-// this component just receives the current stage as a prop):
-//   'in'   (2.5s): camera rotates then zooms to the rift. Overlay fades
+// this component just receives the current stage + universe as props):
+//   'in'   (2.5s): camera rotates then zooms into the rift. Overlay fades
 //                  in over the last COVER_FADE seconds via a CSS
-//                  transition-delay of COVER_DELAY, so it's fully opaque
-//                  just BEFORE the universe swap fires at IN_DURATION.
-//   'peak' (var):  overlay opaque, loop spinning. Universe swap + shader
-//                  compiles happen safely hidden behind it.
-//   'out'  (1.8s): overlay fades out over OUT_FADE seconds while the
-//                  camera pulls back, revealing the new universe.
+//                  transition-delay of COVER_DELAY, fully opaque just
+//                  BEFORE the universe swap fires at IN_DURATION.
+//   'peak' (var):  overlay opaque, streak loop spinning. Universe swap +
+//                  shader compiles happen safely hidden behind it. The
+//                  core-colored base crossfades to the destination palette
+//                  (the `universe` prop flips at the swap).
+//   'out'  (7s):   three beats —
+//                  0 .. STREAK_FADE      streaks/glow fade, leaving only
+//                                        the flat destination core color;
+//                                        camera already pinned INSIDE the
+//                                        new universe's rift core.
+//                  OUT_HOLD .. +OUT_REVEAL
+//                                        the color itself fades, revealing
+//                                        the real rift core engulfing the
+//                                        screen — same color, no seam.
+//                  OUT_HOLD .. OUT_DURATION
+//                                        camera pulls out sloooowly from
+//                                        inside the rift to the overhead
+//                                        view, gaze easing onto the sun.
 
 import type { CSSProperties } from "react"
+import type { Universe } from "@/lib/constants"
 
 export type RiftStage = "idle" | "in" | "peak" | "out"
 
@@ -43,13 +61,31 @@ export const RIFT_TIMING = {
   IN_ROTATE_DURATION: 0.9,
   IN_ZOOM_DURATION: 1.6,
   IN_DURATION: 2.5,           // = IN_ROTATE + IN_ZOOM
-  OUT_DURATION: 1.8,
   PEAK_MIN_DURATION: 0.5,     // floor on peak hold even if shaders are warm
   // Overlay opacity choreography (all CSS-side):
   COVER_DELAY: 1.85,          // seconds into 'in' before the cover starts fading in
   COVER_FADE: 0.5,            // fade-in duration — fully opaque at 2.35s < swap at 2.5s
-  OUT_FADE: 1.4,              // fade-out duration within the 1.8s 'out' stage
+  // 'out' choreography:
+  STREAK_FADE: 1.05,          // streaks/glow wind down, leaving the flat core color
+  OUT_HOLD: 1.15,             // camera pinned inside the new rift core until here
+  OUT_REVEAL: 0.7,            // core color fades, revealing the real engulfed rift
+  OUT_DURATION: 7.0,          // total — slow pull-out ends overhead, centered on sun
 } as const
+
+// ─── Core-colored base ──────────────────────────────────────────────────────
+// Bright center → rift halo → deep space at the corners. Tuned to read like
+// the camera sitting inside each universe's rift core (rift.tsx palettes:
+// professional = violet/pink #a050ff/#ff80d0/#ffa0e8, personal =
+// blue/cyan #3070ff/#00e0ff/#a0e8ff). Both layers stay mounted; the active
+// one (the CURRENT `universe` prop, which flips at the swap) sits at
+// opacity 1 so the swap reads as a slow tint shift behind the streaks.
+
+const CORE_BG: Record<Universe, string> = {
+  professional:
+    "radial-gradient(circle at 50% 50%, #fff2fb 0%, #ffc2ee 16%, #ff9be4 32%, #c969f2 52%, #5d2196 76%, #1c0a3e 100%)",
+  personal:
+    "radial-gradient(circle at 50% 50%, #f2fdff 0%, #c2f0ff 16%, #93e2ff 32%, #4aa8fb 52%, #1d4fae 76%, #071238 100%)",
+}
 
 // ─── Streak layers ──────────────────────────────────────────────────────────
 // Each layer = thin radial rays (repeating-conic-gradient) masked down to a
@@ -107,7 +143,13 @@ const centered: CSSProperties = {
   willChange: "transform, opacity",
 }
 
-export default function RiftWarpOverlay({ stage }: { stage: RiftStage }) {
+export default function RiftWarpOverlay({
+  stage,
+  universe,
+}: {
+  stage: RiftStage
+  universe: Universe
+}) {
   const running = stage !== "idle"
   const playState = running ? ("running" as const) : ("paused" as const)
 
@@ -127,79 +169,101 @@ export default function RiftWarpOverlay({ stage }: { stage: RiftStage }) {
         : stage === "peak"
           ? "opacity 0.15s linear"
           : stage === "out"
-            ? `opacity ${RIFT_TIMING.OUT_FADE}s ease-out`
+            ? // Hold the flat core color until OUT_HOLD (streaks finish
+              // winding down), then fade to the real rift core behind it.
+              `opacity ${RIFT_TIMING.OUT_REVEAL}s linear ${RIFT_TIMING.OUT_HOLD}s`
             : "opacity 0.2s linear",
+  }
+
+  // Everything animated (ripples, streaks, core glow, vignette) lives in
+  // this wrapper so the 'out' stage can wind it down as one unit, leaving
+  // only the flat core-colored base on screen.
+  const fx: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    opacity: stage === "out" ? 0 : 1,
+    transition:
+      stage === "out"
+        ? `opacity ${RIFT_TIMING.STREAK_FADE}s ease-out`
+        : "opacity 0.3s linear",
   }
 
   return (
     <div style={container} aria-hidden>
       <style>{KEYFRAMES}</style>
 
-      {/* Opaque base — must fully hide the scene swap behind it. Matches the
-          old corridor's palette: dark violet core, brighter purple edges. */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 50% 50%, #140833 0%, #1c0b45 38%, #381660 72%, #200d3f 100%)",
-        }}
-      />
-
-      {/* Slow ambient ripple rings expanding behind the streaks */}
-      {[0, -1.2].map((delay) => (
+      {/* Core-colored base — both palettes mounted, crossfaded by the
+          `universe` prop (flips at the swap, hidden behind the streaks).
+          Opaque: this is what fully hides the scene swap. */}
+      {(["professional", "personal"] as Universe[]).map((u) => (
         <div
-          key={`ripple${delay}`}
+          key={u}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: CORE_BG[u],
+            opacity: universe === u ? 1 : 0,
+            transition: "opacity 1.2s linear",
+          }}
+        />
+      ))}
+
+      <div style={fx}>
+        {/* Slow ambient ripple rings expanding behind the streaks */}
+        {[0, -1.2].map((delay) => (
+          <div
+            key={`ripple${delay}`}
+            style={{
+              ...centered,
+              background:
+                "radial-gradient(circle closest-side, transparent 30%, rgba(120,60,200,0.28) 42%, transparent 52%)",
+              animation: "rift-warp-fly 2.4s linear infinite",
+              animationDelay: `${delay}s`,
+              animationPlayState: playState,
+            }}
+          />
+        ))}
+
+        {/* Star streak layers */}
+        {STREAKS.map((s, i) => (
+          <div
+            key={i}
+            style={{
+              ...centered,
+              background: `repeating-conic-gradient(from ${s.from}deg, transparent 0deg, transparent ${s.gap - s.w}deg, ${s.color} ${s.gap - s.w / 2}deg, transparent ${s.gap}deg)`,
+              WebkitMaskImage: RING_MASK,
+              maskImage: RING_MASK,
+              animation: `rift-warp-fly ${s.dur}s linear infinite`,
+              animationDelay: `${s.delay}s`,
+              animationPlayState: playState,
+            }}
+          />
+        ))}
+
+        {/* Pulsing core glow — the vanishing point. Also hides the streak
+            spawn-in region at the center. */}
+        <div
           style={{
             ...centered,
+            width: "46vmax",
+            height: "46vmax",
             background:
-              "radial-gradient(circle closest-side, transparent 30%, rgba(120,60,200,0.28) 42%, transparent 52%)",
-            animation: "rift-warp-fly 2.4s linear infinite",
-            animationDelay: `${delay}s`,
+              "radial-gradient(circle closest-side, rgba(250,240,255,0.9) 0%, rgba(200,150,255,0.5) 22%, rgba(120,60,200,0.16) 50%, transparent 68%)",
+            animation: "rift-warp-pulse 1.1s ease-in-out infinite alternate",
             animationPlayState: playState,
           }}
         />
-      ))}
 
-      {/* Star streak layers */}
-      {STREAKS.map((s, i) => (
+        {/* Vignette — keeps the streaks readable against the bright base */}
         <div
-          key={i}
           style={{
-            ...centered,
-            background: `repeating-conic-gradient(from ${s.from}deg, transparent 0deg, transparent ${s.gap - s.w}deg, ${s.color} ${s.gap - s.w / 2}deg, transparent ${s.gap}deg)`,
-            WebkitMaskImage: RING_MASK,
-            maskImage: RING_MASK,
-            animation: `rift-warp-fly ${s.dur}s linear infinite`,
-            animationDelay: `${s.delay}s`,
-            animationPlayState: playState,
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(circle at 50% 50%, transparent 45%, rgba(8,3,20,0.45) 100%)",
           }}
         />
-      ))}
-
-      {/* Pulsing core glow — the vanishing point. Also hides the streak
-          spawn-in region at the center. */}
-      <div
-        style={{
-          ...centered,
-          width: "46vmax",
-          height: "46vmax",
-          background:
-            "radial-gradient(circle closest-side, rgba(250,240,255,0.9) 0%, rgba(200,150,255,0.5) 22%, rgba(120,60,200,0.16) 50%, transparent 68%)",
-          animation: "rift-warp-pulse 1.1s ease-in-out infinite alternate",
-          animationPlayState: playState,
-        }}
-      />
-
-      {/* Static vignette */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at 50% 50%, transparent 45%, rgba(8,3,20,0.55) 100%)",
-        }}
-      />
+      </div>
     </div>
   )
 }

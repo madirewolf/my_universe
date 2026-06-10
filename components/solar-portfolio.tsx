@@ -43,7 +43,6 @@ const ORIGIN = new THREE.Vector3(0, 0, 0)
 // from inside the core's icosahedron (radius 1.2). User wanted the camera
 // to get genuinely "right up to" the rift before the corridor takes over.
 const RIFT_NEAR_DIST = 0.4
-const RIFT_REVEAL_DIST = 7
 // Reused scratch Vector3 for the lookAt lerp — avoids per-frame allocations.
 const _lookAt = new THREE.Vector3()
 
@@ -109,8 +108,16 @@ function CameraController({
     //                      by RiftCompileGate after gl.compileAsync
     //                      resolves (i.e. the new universe's shaders are
     //                      actually compiled). Min floor = 0.5s.
-    //   • 'out'  (1.8s):   smooth pull OUT to overhead. Overlay fades
-    //                      out over first 1.4s, crossfades into new rift.
+    //   • 'out'  (7s):     three beats —
+    //                      0..OUT_HOLD: camera PINNED inside the new
+    //                        universe's rift core (it engulfs the screen)
+    //                        while the overlay's streaks wind down to the
+    //                        flat core color; the color then fades over
+    //                        the matching real core — invisible handoff.
+    //                      OUT_HOLD..OUT_DURATION: glacial easeInOut pull
+    //                        from inside the rift up to the overhead view,
+    //                        gaze lerping rift → sun. Ends centered on the
+    //                        new universe's sun.
     if (sr.stage !== "idle") {
       if (sr.stageStart < 0) {
         sr.stageStart = state.clock.elapsedTime
@@ -162,12 +169,27 @@ function CameraController({
           onStageOut()
         }
       } else if (sr.stage === "out") {
-        const revealRift = RIFT_WORLD_POS.clone().sub(
-          riftDir.multiplyScalar(RIFT_REVEAL_DIST),
-        )
-        const k = easeInOutCubic(Math.min(t / RIFT_TIMING.OUT_DURATION, 1))
-        camera.position.lerpVectors(stageStartPos.current!, revealRift, k)
-        camera.lookAt(RIFT_WORLD_POS)
+        if (t < RIFT_TIMING.OUT_HOLD) {
+          // ENGULF: pinned inside the new universe's rift core while the
+          // overlay winds down to the flat core color. The core IS the
+          // screen and matches the overlay base, so the reveal is seamless.
+          camera.position.copy(nearRift)
+          camera.lookAt(RIFT_WORLD_POS)
+        } else {
+          // Slow pull-out: easeInOutCubic starts at ~zero velocity, so the
+          // rift still engulfs the screen through the color-fade reveal,
+          // then the camera glides up to overhead, gaze easing rift → sun.
+          const k = easeInOutCubic(
+            Math.min(
+              (t - RIFT_TIMING.OUT_HOLD) /
+                (RIFT_TIMING.OUT_DURATION - RIFT_TIMING.OUT_HOLD),
+              1,
+            ),
+          )
+          camera.position.lerpVectors(stageStartPos.current!, RIFT_OVERHEAD, k)
+          _lookAt.lerpVectors(RIFT_WORLD_POS, ORIGIN, k)
+          camera.lookAt(_lookAt)
+        }
 
         if (t >= RIFT_TIMING.OUT_DURATION) {
           sr.stage = "idle"
@@ -560,7 +582,10 @@ export default function SolarPortfolio() {
   }
 
   const handleEnterRift = () => {
-    if (riftStage !== "idle") return
+    // Guard on the ref, not riftStage state — the ref is the per-frame truth
+    // and can't go stale in a closure, so re-entry mid-cinematic (double
+    // click, double-fired handler) is impossible.
+    if (riftState.current.stage !== "idle") return
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setHoveredPlanet(null)
@@ -717,8 +742,10 @@ export default function SolarPortfolio() {
       {/* Rift transition — lightspeed warp. DOM + compositor-driven CSS so
           it keeps animating even while the WebGL thread stalls compiling the
           new universe's shaders. Sits above the UI (z-150) so the whole swap,
-          including the UI rebrand, happens behind the cover. */}
-      <RiftWarpOverlay stage={riftStage} />
+          including the UI rebrand, happens behind the cover. `universe` flips
+          at the swap, crossfading the core-colored base to the destination
+          rift's palette. */}
+      <RiftWarpOverlay stage={riftStage} universe={universe} />
 
       <UIOverlay
         universe={universe}
