@@ -103,13 +103,6 @@ const CAMERA_FLIGHT = {
   SYSTEM_RETURN: 2.25,
   PLANET: 1.65,
   MOON: 1.35,
-  /**
-   * Attention leads, travel follows: the gaze pan finishes within this
-   * fraction of the flight, then the dolly completes the framing. This is
-   * what makes a transition read as "redirecting attention" instead of
-   * "flying at whatever we were looking at first".
-   */
-  GAZE_LEAD: 0.6,
 } as const
 
 type CameraControlsRef = OrbitControlsImpl
@@ -146,23 +139,35 @@ interface ModeCutState {
 interface CameraFlightState {
   key: string
   start: number
+  duration: number
   fromPos: THREE.Vector3
+  toPos: THREE.Vector3
   fromLookAt: THREE.Vector3
+  toLookAt: THREE.Vector3
+  /** Pinned at flight start — keeps roll stable through the move. */
+  up: THREE.Vector3
 }
 
 // Scratch vectors — avoid per-frame allocations.
 const _approach = new THREE.Vector3()
 const _dir = new THREE.Vector3()
+const _m4 = new THREE.Matrix4()
 
 function syncCameraLookAt(
   camera: THREE.Camera,
   controls: CameraControlsRef | null,
   lookAt: THREE.Vector3,
+  up?: THREE.Vector3,
 ) {
   if (controls) {
     controls.target.copy(lookAt)
   }
-  camera.lookAt(lookAt)
+  if (up) {
+    _m4.lookAt(camera.position, lookAt, up)
+    camera.quaternion.setFromRotationMatrix(_m4)
+  } else {
+    camera.lookAt(lookAt)
+  }
   // NO controls.update() here. update() enforces min/max-distance and polar
   // clamps, and mid-transition the camera is legitimately outside the
   // destination mode's clamps (e.g. 52 away when planet mode allows 22) —
@@ -232,8 +237,12 @@ function CameraController({
   const flight = useRef<CameraFlightState>({
     key: "",
     start: -1,
+    duration: CAMERA_FLIGHT.SYSTEM,
     fromPos: new THREE.Vector3(),
+    toPos: new THREE.Vector3(),
     fromLookAt: new THREE.Vector3(),
+    toLookAt: new THREE.Vector3(),
+    up: new THREE.Vector3(0, 1, 0),
   })
   // Captured camera position when stage 'in' starts, AND nearRift snapshot
   // when stage 'out' starts. Reused for the lerp source.
@@ -473,32 +482,33 @@ function CameraController({
     }
 
     if (flight.current.key !== flightKey || flight.current.start < 0) {
-      flight.current.key = flightKey
-      flight.current.start = state.clock.elapsedTime
-      flight.current.fromPos.copy(camera.position)
-      flight.current.fromLookAt.copy(controls?.target ?? lookTarget.current)
-    }
-
-    const duration =
-      returningToSystem
+      const f = flight.current
+      f.key = flightKey
+      f.start = state.clock.elapsedTime
+      f.duration = returningToSystem
         ? CAMERA_FLIGHT.SYSTEM_RETURN
         : mode === "planet"
-        ? CAMERA_FLIGHT.PLANET
-        : mode === "moon"
-          ? CAMERA_FLIGHT.MOON
-          : CAMERA_FLIGHT.SYSTEM
-    const rawT = (state.clock.elapsedTime - flight.current.start) / duration
+          ? CAMERA_FLIGHT.PLANET
+          : mode === "moon"
+            ? CAMERA_FLIGHT.MOON
+            : CAMERA_FLIGHT.SYSTEM
+      f.fromPos.copy(camera.position)
+      f.fromLookAt.copy(controls?.target ?? lookTarget.current)
+      f.toPos.copy(target.current)
+      f.toLookAt.copy(nextLookTarget)
+      f.up.copy(camera.up)
+    }
+
+    const rawT = (state.clock.elapsedTime - flight.current.start) / flight.current.duration
     const k = easeInOutCubic(Math.min(rawT, 1))
-    // One continuous move, but the GAZE finishes early (GAZE_LEAD): on
-    // U→P attention swings onto the planet before the dolly closes in
-    // (no more "diving at the sun first"); on P→U it settles back onto
-    // the sun while the camera is still rising. No holds, no second kick.
-    const gazeK = easeInOutCubic(Math.min(rawT / CAMERA_FLIGHT.GAZE_LEAD, 1))
-    camera.position.lerpVectors(flight.current.fromPos, target.current, k)
-    lookTarget.current.lerpVectors(flight.current.fromLookAt, nextLookTarget, gazeK)
-    syncCameraLookAt(camera, controls, lookTarget.current)
+    // One clock for dolly + gaze. Split clocks and quaternion tricks were
+    // the hitch sources — keep it a single eased move.
+    camera.position.lerpVectors(flight.current.fromPos, flight.current.toPos, k)
+    _lookAt.lerpVectors(flight.current.fromLookAt, flight.current.toLookAt, k)
+    syncCameraLookAt(camera, controls, _lookAt, flight.current.up)
 
     if (rawT >= 1) {
+      lookTarget.current.copy(flight.current.toLookAt)
       setIsTransitioning(false)
       flight.current.start = -1
     }
@@ -576,15 +586,17 @@ function ShaderWarmer({
 
     if (!rt.current) rt.current = new THREE.WebGLRenderTarget(16, 16)
 
-    const prevVis = groups.map((g) => g.visible)
     const prevTarget = gl.getRenderTarget()
+    const visibility = new Map<THREE.Object3D, boolean>()
     const culling = new Map<THREE.Object3D, boolean>()
 
-    // Force-draw both universes: visible + no frustum culling.
+    // Force-draw hidden subtrees too (landmark moons start invisible until
+    // first focus) — a real offscreen draw links ANGLE shader programs.
     groups.forEach((g) => {
-      g.visible = true
       g.traverse((o) => {
+        visibility.set(o, o.visible)
         culling.set(o, o.frustumCulled)
+        o.visible = true
         o.frustumCulled = false
       })
     })
@@ -593,9 +605,8 @@ function ShaderWarmer({
     gl.render(scene, camera) // <- the real draw that ANGLE actually links
     gl.setRenderTarget(prevTarget)
 
-    // Restore visibility + culling so the on-screen frame is unchanged.
-    groups.forEach((g, i) => {
-      g.visible = prevVis[i]
+    visibility.forEach((visible, o) => {
+      o.visible = visible
     })
     culling.forEach((fc, o) => {
       o.frustumCulled = fc
@@ -840,6 +851,16 @@ export default function SolarPortfolio() {
 
   const mode: Mode = selectedLandmark ? "moon" : selectedPlanet !== null ? "planet" : "system"
   const cameraMode: Mode = returningToSystem ? "system" : mode
+  // OrbitControls clamps stay on the *departure* mode until the flight ends —
+  // flipping to the destination mode on click made frame 1 snap before useFrame
+  // could disable the controls.
+  const controlsMode: Mode = isTransitioning
+    ? returningToSystem
+      ? "planet"
+      : selectedPlanet !== null
+        ? "system"
+        : cameraMode
+    : cameraMode
 
   useEffect(() => {
     if (!returningToSystem || isTransitioning) return
@@ -1104,7 +1125,7 @@ export default function SolarPortfolio() {
             tint={
               config.backgroundVariant === "bright"
                 ? [1.05, 1.0, 1.05]
-                : [1.05, 0.78, 1.55]
+                : [0.72, 1.12, 1.08]
             }
           />
           <StarField />
@@ -1180,14 +1201,14 @@ export default function SolarPortfolio() {
             // Mobile moon view: one-finger vertical swipes step through the
             // info sections (see moon-view.tsx), so rotation is disabled
             // there. Pinch zoom still works.
-            enableRotate={!(cameraMode === "moon" && isMobile)}
-            enableDamping
+            enableRotate={!(controlsMode === "moon" && isMobile)}
+            enableDamping={!isTransitioning}
             dampingFactor={0.055}
-            minDistance={cameraMode === "system" ? 30 : cameraMode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
-            maxDistance={cameraMode === "system" ? 90 : cameraMode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
-            autoRotate={cameraMode === "system" && !isTransitioning && !paused}
+            minDistance={controlsMode === "system" ? 30 : controlsMode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
+            maxDistance={controlsMode === "system" ? 90 : controlsMode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
+            autoRotate={controlsMode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
-            maxPolarAngle={cameraMode === "system" ? Math.PI / 2.2 : Math.PI}
+            maxPolarAngle={controlsMode === "system" ? Math.PI / 2.2 : Math.PI}
             minPolarAngle={0}
           />
         </Suspense>

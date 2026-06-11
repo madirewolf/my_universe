@@ -21,16 +21,16 @@ interface CloudConfig {
 // +Z and the side flanks so the user sees nebula coverage from any angle
 // after rotating the camera. ~50% more clouds total per universe.
 const PROF_CLOUDS: CloudConfig[] = [
-  { color: "#5020a0", pos: [-110, 20, -130], rot: [0.3, 0.5, 0.0], size: 160, opacity: 0.55, swirl: 1.0 },
-  { color: "#1855aa", pos: [120, -15, -100], rot: [-0.4, 0.8, 0.2], size: 150, opacity: 0.5, swirl: 0.8 },
-  { color: "#aa3055", pos: [-40, 60, -150], rot: [0.6, 0.2, -0.3], size: 110, opacity: 0.45, swirl: 1.3 },
-  { color: "#3070d8", pos: [80, 70, -120], rot: [0.1, -0.5, 0.4], size: 130, opacity: 0.4, swirl: 0.9 },
-  { color: "#7020c8", pos: [-90, -30, -160], rot: [-0.2, 1.0, 0.0], size: 140, opacity: 0.55, swirl: 1.1 },
-  { color: "#1090d8", pos: [60, -50, -140], rot: [0.5, -0.3, 0.7], size: 120, opacity: 0.4, swirl: 1.0 },
+  { color: "#00695c", pos: [-110, 20, -130], rot: [0.3, 0.5, 0.0], size: 160, opacity: 0.55, swirl: 1.0 },
+  { color: "#00838f", pos: [120, -15, -100], rot: [-0.4, 0.8, 0.2], size: 150, opacity: 0.5, swirl: 0.8 },
+  { color: "#00a896", pos: [-40, 60, -150], rot: [0.6, 0.2, -0.3], size: 110, opacity: 0.45, swirl: 1.3 },
+  { color: "#26a69a", pos: [80, 70, -120], rot: [0.1, -0.5, 0.4], size: 130, opacity: 0.4, swirl: 0.9 },
+  { color: "#00796b", pos: [-90, -30, -160], rot: [-0.2, 1.0, 0.0], size: 140, opacity: 0.55, swirl: 1.1 },
+  { color: "#00acc1", pos: [60, -50, -140], rot: [0.5, -0.3, 0.7], size: 120, opacity: 0.4, swirl: 1.0 },
   // ── Scatter set ─────────────────────────────────────────────────────────
-  { color: "#4060c0", pos: [-30, 50, 140], rot: [0.2, -1.4, 0.3], size: 140, opacity: 0.48, swirl: 0.95 },
-  { color: "#6020a8", pos: [80, -45, 130], rot: [-0.3, 1.6, -0.2], size: 130, opacity: 0.5, swirl: 1.1 },
-  { color: "#2080d0", pos: [-140, 10, 30], rot: [0.4, -0.9, 0.6], size: 125, opacity: 0.42, swirl: 1.0 },
+  { color: "#00897b", pos: [-30, 50, 140], rot: [0.2, -1.4, 0.3], size: 140, opacity: 0.48, swirl: 0.95 },
+  { color: "#006064", pos: [80, -45, 130], rot: [-0.3, 1.6, -0.2], size: 130, opacity: 0.5, swirl: 1.1 },
+  { color: "#00b8a9", pos: [-140, 10, 30], rot: [0.4, -0.9, 0.6], size: 125, opacity: 0.42, swirl: 1.0 },
 ]
 
 const PERS_CLOUDS: CloudConfig[] = [

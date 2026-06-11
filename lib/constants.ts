@@ -59,7 +59,7 @@ export interface UniverseConfig {
   label: string
   eyebrow: string
   glitchSubtitle: string
-  sunVariant: "warm" | "nebula"
+  sunVariant: "warm" | "nebula" | "teal"
   backgroundVariant: "dark" | "bright"
   planets: PlanetEntry[]
 }
@@ -72,7 +72,7 @@ const PROFESSIONAL: UniverseConfig = {
   label: "Universe",
   eyebrow: "Interactive Portfolio",
   glitchSubtitle: "solar system :P",
-  sunVariant: "warm",
+  sunVariant: "teal",
   backgroundVariant: "dark",
   planets: [
     {

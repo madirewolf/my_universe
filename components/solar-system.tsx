@@ -9,7 +9,7 @@ import type { PlanetEntry } from "@/lib/constants"
 
 interface SolarSystemProps {
   planets: PlanetEntry[]
-  sunVariant: "warm" | "nebula"
+  sunVariant: "warm" | "nebula" | "teal"
   paused?: boolean
   focusedPlanet?: number | null
   planetRotation?: { lon: number; lat: number }

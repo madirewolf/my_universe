@@ -9,11 +9,11 @@ interface CosmicDustProps {
 }
 
 const PROF_PALETTE: [number, number, number][] = [
-  [0.55, 0.65, 1.00], // ice blue
-  [0.95, 0.50, 0.95], // magenta
-  [0.70, 0.60, 1.00], // violet
-  [0.90, 0.95, 1.00], // white
-  [0.50, 0.85, 1.00], // cyan
+  [0.35, 0.95, 0.85], // crystal aqua
+  [0.20, 0.80, 0.75], // Caribbean teal
+  [0.45, 1.00, 0.92], // mint highlight
+  [0.90, 0.98, 0.96], // white
+  [0.15, 0.70, 0.80], // deep sea cyan
 ]
 
 const PERS_PALETTE: [number, number, number][] = [

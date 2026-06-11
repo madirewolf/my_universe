@@ -77,7 +77,7 @@ export default function Background({ variant = "dark" }: BackgroundProps) {
         className="w-full h-full"
         style={{
           background: `
-            linear-gradient(160deg, #01010f 0%, #05030f 30%, #020818 60%, #030512 100%)
+            linear-gradient(160deg, #010a0c 0%, #021418 30%, #031f24 60%, #021210 100%)
           `,
         }}
       />
@@ -87,12 +87,12 @@ export default function Background({ variant = "dark" }: BackgroundProps) {
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(ellipse 70% 50% at 15% 60%, rgba(99, 28, 210, 0.26) 0%, transparent 65%),
-            radial-gradient(ellipse 55% 40% at 85% 25%, rgba(20, 60, 200, 0.22) 0%, transparent 60%),
-            radial-gradient(ellipse 45% 60% at 70% 80%, rgba(180, 20, 100, 0.16) 0%, transparent 55%),
-            radial-gradient(ellipse 60% 35% at 40% 10%, rgba(30, 100, 200, 0.18) 0%, transparent 55%),
-            radial-gradient(ellipse 40% 50% at 90% 60%, rgba(80, 10, 160, 0.16) 0%, transparent 50%),
-            radial-gradient(ellipse 35% 45% at 8% 30%, rgba(40, 80, 220, 0.14) 0%, transparent 50%)
+            radial-gradient(ellipse 70% 50% at 15% 60%, rgba(0, 160, 140, 0.24) 0%, transparent 65%),
+            radial-gradient(ellipse 55% 40% at 85% 25%, rgba(0, 120, 160, 0.20) 0%, transparent 60%),
+            radial-gradient(ellipse 45% 60% at 70% 80%, rgba(0, 200, 150, 0.14) 0%, transparent 55%),
+            radial-gradient(ellipse 60% 35% at 40% 10%, rgba(0, 180, 170, 0.16) 0%, transparent 55%),
+            radial-gradient(ellipse 40% 50% at 90% 60%, rgba(0, 100, 120, 0.14) 0%, transparent 50%),
+            radial-gradient(ellipse 35% 45% at 8% 30%, rgba(40, 200, 180, 0.12) 0%, transparent 50%)
           `,
         }}
       />
@@ -102,11 +102,11 @@ export default function Background({ variant = "dark" }: BackgroundProps) {
         className="absolute inset-0"
         style={{
           background: `
-            radial-gradient(ellipse 20% 15% at 14% 62%, rgba(150, 80, 255, 0.22) 0%, transparent 50%),
-            radial-gradient(ellipse 18% 12% at 84% 24%, rgba(60, 120, 255, 0.19) 0%, transparent 50%),
-            radial-gradient(ellipse 15% 20% at 68% 82%, rgba(220, 60, 140, 0.16) 0%, transparent 50%),
-            radial-gradient(ellipse 12% 18% at 30% 28%, rgba(200, 120, 255, 0.13) 0%, transparent 50%),
-            radial-gradient(ellipse 16% 12% at 92% 70%, rgba(120, 60, 200, 0.14) 0%, transparent 50%)
+            radial-gradient(ellipse 20% 15% at 14% 62%, rgba(60, 220, 190, 0.20) 0%, transparent 50%),
+            radial-gradient(ellipse 18% 12% at 84% 24%, rgba(40, 180, 220, 0.17) 0%, transparent 50%),
+            radial-gradient(ellipse 15% 20% at 68% 82%, rgba(0, 200, 160, 0.14) 0%, transparent 50%),
+            radial-gradient(ellipse 12% 18% at 30% 28%, rgba(80, 240, 210, 0.12) 0%, transparent 50%),
+            radial-gradient(ellipse 16% 12% at 92% 70%, rgba(0, 160, 180, 0.13) 0%, transparent 50%)
           `,
         }}
       />
@@ -116,8 +116,8 @@ export default function Background({ variant = "dark" }: BackgroundProps) {
         className="absolute inset-0 mix-blend-screen opacity-50"
         style={{
           background: `
-            linear-gradient(125deg, transparent 35%, rgba(120, 80, 220, 0.08) 50%, transparent 65%),
-            linear-gradient(-30deg, transparent 45%, rgba(40, 110, 220, 0.07) 55%, transparent 70%)
+            linear-gradient(125deg, transparent 35%, rgba(60, 200, 180, 0.08) 50%, transparent 65%),
+            linear-gradient(-30deg, transparent 45%, rgba(40, 160, 200, 0.07) 55%, transparent 70%)
           `,
         }}
       />

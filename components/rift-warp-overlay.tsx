@@ -82,7 +82,7 @@ export const RIFT_TIMING = {
 
 const CORE_BG: Record<Universe, string> = {
   professional:
-    "radial-gradient(circle at 50% 50%, #fff2fb 0%, #ffc2ee 16%, #ff9be4 32%, #c969f2 52%, #5d2196 76%, #1c0a3e 100%)",
+    "radial-gradient(circle at 50% 50%, #f0fffc 0%, #b2f5ea 16%, #80deea 32%, #26a69a 52%, #00695c 76%, #012420 100%)",
   personal:
     "radial-gradient(circle at 50% 50%, #f2fdff 0%, #c2f0ff 16%, #93e2ff 32%, #4aa8fb 52%, #1d4fae 76%, #071238 100%)",
 }

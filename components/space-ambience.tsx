@@ -29,9 +29,9 @@ interface Palette {
 }
 
 const PALETTE_DARK: Palette = {
-  shootingStar: new THREE.Color("#a0c8ff"),
-  comet: new THREE.Color("#d8e0ff"),
-  pulsar: new THREE.Color("#80a0ff"),
+  shootingStar: new THREE.Color("#80f0e0"),
+  comet: new THREE.Color("#c8fff5"),
+  pulsar: new THREE.Color("#40d8c8"),
 }
 const PALETTE_BRIGHT: Palette = {
   shootingStar: new THREE.Color("#ffe0b0"),

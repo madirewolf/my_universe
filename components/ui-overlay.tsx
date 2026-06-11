@@ -52,19 +52,19 @@ const GLASS_TONES = {
 } as const
 
 const TITLE_GRADIENTS: Record<Universe, string> = {
-  professional: "linear-gradient(90deg, #ff006e, #8338ec, #3a86ff, #06ffa5, #ffbe0b)",
+  professional: "linear-gradient(90deg, #00b8a9, #26c6b8, #4dd0c8, #80deea, #a7ffeb)",
   personal: "linear-gradient(90deg, #ffb0e0, #d090ff, #80d8ff, #b0ffd0, #fff0a0)",
 }
 
 const ACCENT_GRADIENTS: Record<Universe, string> = {
   professional:
-    "linear-gradient(90deg, rgba(100,160,255,0.85), rgba(180,80,255,0.5), transparent 70%)",
+    "linear-gradient(90deg, rgba(77,208,200,0.85), rgba(0,150,136,0.5), transparent 70%)",
   personal:
     "linear-gradient(90deg, rgba(255,160,220,0.85), rgba(180,140,255,0.5), transparent 70%)",
 }
 
 const EYEBROW_COLORS: Record<Universe, string> = {
-  professional: "rgba(120,170,255,0.55)",
+  professional: "rgba(77,208,200,0.55)",
   personal: "rgba(255,180,230,0.7)",
 }
 
@@ -353,7 +353,7 @@ function SocialLink({ href, icon: Icon }: { href: string; icon: typeof Instagram
 }
 
 function RiftHint({ universe, onClick }: { universe: Universe; onClick: () => void }) {
-  const accent = universe === "professional" ? "#d090ff" : "#80d0ff"
+  const accent = universe === "professional" ? "#4dd0c8" : "#80d0ff"
   const otherSide = universe === "professional" ? "Inner Universe" : "Public Universe"
   return (
     <button

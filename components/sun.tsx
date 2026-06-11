@@ -23,7 +23,7 @@ import * as THREE from "three"
 import type { Mesh } from "three"
 import { LIGHTING } from "@/lib/constants"
 
-type SunVariant = "warm" | "nebula"
+type SunVariant = "warm" | "nebula" | "teal"
 
 interface SunProps {
   position: [number, number, number]
@@ -67,6 +67,18 @@ const SUN_VARIANTS: Record<SunVariant, {
     emissive: 1.75,
     granScale: 1.4,
     hotSpot: 0.65,
+  },
+  teal: {
+    colorA: "#004d40",       // deep Caribbean teal troughs
+    colorB: "#80deea",       // bright crystal aqua cells
+    spotCol: "#012820",      // dark teal sunspot
+    glowColor: "#26c6b8",
+    coronaColor: "#4dd0c8",
+    windCol: "#a8f0e8",
+    rimGlow: [0.25, 0.95, 0.82],
+    emissive: 1.85,
+    granScale: 1.5,
+    hotSpot: 0.9,
   },
 }
 

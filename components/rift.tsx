@@ -101,11 +101,11 @@ export default function Rift({ onClick, universe, paused = false }: RiftProps) {
   const colors = useMemo(() => {
     if (universe === "professional") {
       return {
-        a: new THREE.Color("#a050ff"),
-        b: new THREE.Color("#ff80d0"),
-        beam: "#e090ff",
-        shard: "#d090ff",
-        emissive: "#ffa0e8",
+        a: new THREE.Color("#00897b"),
+        b: new THREE.Color("#4dd0c8"),
+        beam: "#80deea",
+        shard: "#26c6b8",
+        emissive: "#a8f0e8",
       }
     }
     return {
