@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import { useFrame } from "@react-three/fiber"
 import { Html } from "@react-three/drei"
 import * as THREE from "three"
@@ -37,6 +37,9 @@ interface PlanetProps {
   latOffset?: number
   /** object = the clicked moon mesh — tracked live during the dive. */
   onLandmarkClick?: (landmark: Landmark, object: THREE.Object3D) => void
+  /** When provided (focused planet), filled with the live moon meshes so
+   *  the moon→planet return can frame the exact moon it left through. */
+  landmarkObjectsRef?: MutableRefObject<(THREE.Object3D | null)[]>
   landmarks?: Landmark[]
 }
 
@@ -209,6 +212,7 @@ export default function Planet({
   lonOffset = 0,
   latOffset = 0,
   onLandmarkClick,
+  landmarkObjectsRef,
   landmarks: landmarksProp,
 }: PlanetProps) {
   // Backward compat: software-systems used to be implicitly cube-shaped via type
@@ -423,6 +427,7 @@ export default function Planet({
               <mesh
                 ref={(el) => {
                   if (el) landmarkRefs.current[index] = el
+                  if (landmarkObjectsRef) landmarkObjectsRef.current[index] = el
                 }}
                 geometry={moonGeoms[index]}
                 scale={moonScale}

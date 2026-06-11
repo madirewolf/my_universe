@@ -21,6 +21,7 @@ import RiftWarpOverlay, {
 } from "./rift-warp-overlay"
 import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
+import { focusedCrystalRadius } from "./planet"
 
 type Mode = "system" | "planet" | "moon"
 const MOBILE_QUERY = "(max-width: 768px)"
@@ -54,7 +55,12 @@ const _lookAt = new THREE.Vector3()
 // Where the camera settles in each mode. Shared by the isTransitioning lerp
 // (deep links) and the mode-cut arrival glide.
 const SETTLE_POS = {
-  system: () => new THREE.Vector3(0, 52, 0),
+  // The small z offset keeps the camera OFF the exact pole above the sun.
+  // At (0,52,0) looking at the origin, forward is parallel to up — the one
+  // orientation lookAt can't define — so the roll collapsed to an arbitrary
+  // fallback in the final frames of the return flight (the "reframe jump"
+  // at the end). Same trick the moon settle already used.
+  system: () => new THREE.Vector3(0, 52, 0.6),
   // Detail views deliberately settle further out than they used to — the
   // user wanted the closest zoom point "less close".
   planet: (isMobile: boolean) => new THREE.Vector3(0, 0, isMobile ? 21 : 15),
@@ -119,10 +125,14 @@ interface ModeCutState {
   targetObj: THREE.Object3D | null
   /** Camera-to-anchor distance at the cut. */
   cutDist: number
-  /** Camera-to-origin distance right after the cut. */
+  /** Camera-to-anchor distance right after the cut. */
   arriveDist: number
   fromLookAt: THREE.Vector3
+  /** What the camera stares at right after the cut (the arrival anchor). */
   lookAtPos: THREE.Vector3
+  /** What the camera ends up looking at — MUST equal the destination
+   *  mode's resting gaze, or the controls handoff visibly refocuses. */
+  settleLook: THREE.Vector3
   settlePos: THREE.Vector3
   /** Mode we're heading to — the cut releases once this mode is mounted. */
   destMode: Mode
@@ -418,15 +428,21 @@ function CameraController({
         }
       } else {
         // Arrival — starts with velocity (continuing the cut's motion) and
-        // brakes into the settle position.
-        const k = easeOutCubic(Math.min(t / mw.inDur, 1))
+        // brakes into the settle position. The gaze glides from the arrival
+        // anchor onto the resting gaze and finishes EARLY (gaze lead), so
+        // the final frame is exactly the frame the idle controls take over
+        // — no end-of-transition refocus jump.
+        const rawT = t / mw.inDur
+        const k = easeOutCubic(Math.min(rawT, 1))
+        const gazeK = easeInOutCubic(Math.min(rawT / 0.85, 1))
         camera.position.lerpVectors(mw.fromPos, mw.settlePos, k)
-        syncCameraLookAt(camera, controls, mw.lookAtPos)
+        _lookAt.lerpVectors(mw.lookAtPos, mw.settleLook, gazeK)
+        syncCameraLookAt(camera, controls, _lookAt)
 
-        if (t >= mw.inDur) {
+        if (rawT >= 1) {
           mw.phase = "idle"
           mw.start = -1
-          lookTarget.current.copy(mw.lookAtPos)
+          lookTarget.current.copy(mw.settleLook)
         }
       }
       return
@@ -727,6 +743,7 @@ export default function SolarPortfolio() {
     arriveDist: 1,
     fromLookAt: new THREE.Vector3(),
     lookAtPos: new THREE.Vector3(),
+    settleLook: new THREE.Vector3(),
     settlePos: new THREE.Vector3(),
     destMode: "system",
     holdFrames: 0,
@@ -738,6 +755,10 @@ export default function SolarPortfolio() {
     professional: null,
     personal: null,
   })
+  // Live meshes of the focused planet's orbiting crystal moons, registered
+  // by Planet. Used by the moon→planet return to arrive framing the exact
+  // moon we left through (the data crystal's twin).
+  const focusedMoonObjects = useRef<(THREE.Object3D | null)[]>([])
   // Joystick velocity from the navigation dial (-1..1 each axis). When non-zero
   // a RAF loop integrates it into planetRotation for continuous rotation.
   const joystickRef = useRef({ x: 0, y: 0 })
@@ -872,6 +893,8 @@ export default function SolarPortfolio() {
     arriveDist: number
     fromLookAt?: THREE.Vector3
     lookAtPos?: THREE.Vector3
+    /** Resting gaze of the destination mode. Defaults to lookAtPos. */
+    settleLook?: THREE.Vector3
     settlePos: THREE.Vector3
     destMode: Mode
     outDur: number
@@ -893,6 +916,7 @@ export default function SolarPortfolio() {
     mw.arriveDist = opts.arriveDist
     mw.fromLookAt.copy(opts.fromLookAt ?? ORIGIN)
     mw.lookAtPos.copy(opts.lookAtPos ?? ORIGIN)
+    mw.settleLook.copy(opts.settleLook ?? opts.lookAtPos ?? ORIGIN)
     mw.settlePos.copy(opts.settlePos)
     mw.destMode = opts.destMode
     mw.holdFrames = 0
@@ -970,21 +994,29 @@ export default function SolarPortfolio() {
   const handleNextMoon = useCallback(() => handleMoonStep(1), [handleMoonStep])
 
   const handleBackFromMoon = () => {
-    // Small→big: slow zoom-out from the moon scene; the cut happens while
-    // everything is tiny, the camera arrives above the focused planet still
-    // moving outward and glides to its resting frame. The system reappears
-    // exactly at the cut — no fade (its shaders ignore opacity anyway).
+    // Exact mirror of the way in: dive back INTO the data crystal until it
+    // fills the frame, cut behind it to its orbiting twin filling the frame
+    // the same way, then pull back from the moon while the gaze glides onto
+    // the planet — ending precisely on the focused planet's resting frame.
     const planetTarget = focusTargetVector ?? ORIGIN
+    const moonObj =
+      landmarkIndex >= 0 ? focusedMoonObjects.current[landmarkIndex] ?? null : null
+    const moonPos = moonObj
+      ? moonObj.getWorldPosition(new THREE.Vector3())
+      : planetTarget.clone()
+    const crystalRadius = selected ? focusedCrystalRadius(selected.size) : 0.24
     startModeCut({
-      targetObj: null,
-      cutDist: 30,
-      arriveDist: 9.5,
-      lookAtPos: planetTarget,
+      targetObj: null, // dive anchor = the data crystal at the origin
+      cutDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
+      // The twin moon fills the frame at the matching angular size.
+      arriveDist: moonObj ? MODE_CUT.FILL_FACTOR * crystalRadius : 9.5,
+      lookAtPos: moonPos,
+      settleLook: planetTarget,
       settlePos: focusTargetVector
         ? planetFocusSettle(focusTargetVector, isMobile)
         : SETTLE_POS.planet(isMobile),
       destMode: "planet",
-      outDur: MODE_CUT.ZOOM_OUT,
+      outDur: MODE_CUT.DIVE_OUT,
       inDur: MODE_CUT.ZOOM_IN,
       commit: () => {
         setSelectedLandmark(null)
@@ -1056,7 +1088,7 @@ export default function SolarPortfolio() {
           the camera (one of the jitter sources). Flights are short; they
           always complete. */}
       <Canvas
-        camera={{ position: [0, 52, 0], fov: 60 }}
+        camera={{ position: [0, 52, 0.6], fov: 60 }}
         frameloop="always"
         gl={{ antialias: true }}
       >
@@ -1116,8 +1148,14 @@ export default function SolarPortfolio() {
                   planets={cfg.planets}
                   sunVariant={cfg.sunVariant}
                   paused={paused || !isActive}
-                  focusedPlanet={(mode === "planet" || returningToSystem) && isActive ? selectedPlanet : null}
+                  // The planet stays "focused" through moon visits too (the
+                  // system is hidden then, but its moons must stay mounted at
+                  // full scale so the moon→planet return can cut to the twin
+                  // moon already in place) and through the return-to-system
+                  // flight (moons dissolve only after we're home).
+                  focusedPlanet={(mode !== "system" || returningToSystem) && isActive ? selectedPlanet : null}
                   planetRotation={planetRotation}
+                  focusedLandmarkObjects={isActive ? focusedMoonObjects : undefined}
                   onSunClick={toggleManualPause}
                   onPlanetClick={handlePlanetClick}
                   onLandmarkClick={handleLandmarkClick}

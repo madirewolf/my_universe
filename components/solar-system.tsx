@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef } from "react"
+import { useRef, type MutableRefObject } from "react"
 import * as THREE from "three"
 import type { Group } from "three"
 import Planet from "./planet"
@@ -13,6 +13,9 @@ interface SolarSystemProps {
   paused?: boolean
   focusedPlanet?: number | null
   planetRotation?: { lon: number; lat: number }
+  /** Filled with the focused planet's orbiting moon meshes (for the
+   *  moon→planet return's match-cut framing). */
+  focusedLandmarkObjects?: MutableRefObject<(THREE.Object3D | null)[]>
   onSunClick?: () => void
   /** object = the clicked planet mesh — tracked live during the dive. */
   onPlanetClick: (planetIndex: number, object: THREE.Object3D) => void
@@ -26,6 +29,7 @@ export default function SolarSystem({
   paused = false,
   focusedPlanet = null,
   planetRotation = { lon: 0, lat: 0 },
+  focusedLandmarkObjects,
   onSunClick,
   onPlanetClick,
   onLandmarkClick,
@@ -61,6 +65,7 @@ export default function SolarSystem({
           landmarks={planet.landmarks}
           lonOffset={focusedPlanet === index ? planetRotation.lon : 0}
           latOffset={focusedPlanet === index ? planetRotation.lat : 0}
+          landmarkObjectsRef={focusedPlanet === index ? focusedLandmarkObjects : undefined}
           onLandmarkClick={onLandmarkClick}
           onClick={(e) => {
             e.stopPropagation()
