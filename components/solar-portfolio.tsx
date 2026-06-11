@@ -93,9 +93,17 @@ const MODE_CUT = {
 const MOON_CRYSTAL_RADIUS = 1.55 // MoonView's central data crystal
 const MOON_ORBIT_RADIUS = 0.36 // crystal moons orbiting a detail planet
 const CAMERA_FLIGHT = {
-  SYSTEM: 1.45,
+  SYSTEM: 1.75,
+  SYSTEM_RETURN: 2.25,
   PLANET: 1.65,
   MOON: 1.35,
+  /**
+   * Attention leads, travel follows: the gaze pan finishes within this
+   * fraction of the flight, then the dolly completes the framing. This is
+   * what makes a transition read as "redirecting attention" instead of
+   * "flying at whatever we were looking at first".
+   */
+  GAZE_LEAD: 0.6,
 } as const
 
 type CameraControlsRef = OrbitControlsImpl
@@ -154,6 +162,13 @@ function syncCameraLookAt(
   // branch does one clean update() at handoff.
 }
 
+// NOTE: no opacity-based fade for the solar system — the sun/planet/rift
+// materials are custom shaders that IGNORE material.opacity, so a "fade"
+// leaves them fully visible (that's how the sun ended up photobombing the
+// middle of the moon scene). The system hides/shows with a plain visibility
+// flip, always masked by the moon match-cut; only the moon diorama (standard
+// materials) genuinely materializes via opacity.
+
 function landmarkKey(landmark: Landmark): string {
   return `${landmark.name}::${landmark.category}`
 }
@@ -178,6 +193,7 @@ function CameraController({
   mode,
   isMobile,
   focusTarget,
+  returningToSystem,
   controlsRef,
   isTransitioning,
   setIsTransitioning,
@@ -190,6 +206,7 @@ function CameraController({
   mode: Mode
   isMobile: boolean
   focusTarget: THREE.Vector3 | null
+  returningToSystem: boolean
   controlsRef: MutableRefObject<CameraControlsRef | null>
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
@@ -426,7 +443,7 @@ function CameraController({
     } else {
       target.current.copy(SETTLE_POS.system())
     }
-    const flightKey = `${mode}:${isMobile ? "m" : "d"}:${nextLookTarget.x.toFixed(3)}:${nextLookTarget.y.toFixed(3)}:${nextLookTarget.z.toFixed(3)}`
+    const flightKey = `${mode}:${returningToSystem ? "return" : "steady"}:${isMobile ? "m" : "d"}:${nextLookTarget.x.toFixed(3)}:${nextLookTarget.y.toFixed(3)}:${nextLookTarget.z.toFixed(3)}`
 
     if (!isTransitioning) {
       flight.current.key = flightKey
@@ -447,19 +464,25 @@ function CameraController({
     }
 
     const duration =
-      mode === "planet"
+      returningToSystem
+        ? CAMERA_FLIGHT.SYSTEM_RETURN
+        : mode === "planet"
         ? CAMERA_FLIGHT.PLANET
         : mode === "moon"
           ? CAMERA_FLIGHT.MOON
           : CAMERA_FLIGHT.SYSTEM
-    const k = easeInOutCubic(
-      Math.min((state.clock.elapsedTime - flight.current.start) / duration, 1),
-    )
+    const rawT = (state.clock.elapsedTime - flight.current.start) / duration
+    const k = easeInOutCubic(Math.min(rawT, 1))
+    // One continuous move, but the GAZE finishes early (GAZE_LEAD): on
+    // U→P attention swings onto the planet before the dolly closes in
+    // (no more "diving at the sun first"); on P→U it settles back onto
+    // the sun while the camera is still rising. No holds, no second kick.
+    const gazeK = easeInOutCubic(Math.min(rawT / CAMERA_FLIGHT.GAZE_LEAD, 1))
     camera.position.lerpVectors(flight.current.fromPos, target.current, k)
-    lookTarget.current.lerpVectors(flight.current.fromLookAt, nextLookTarget, k)
+    lookTarget.current.lerpVectors(flight.current.fromLookAt, nextLookTarget, gazeK)
     syncCameraLookAt(camera, controls, lookTarget.current)
 
-    if (k >= 1) {
+    if (rawT >= 1) {
       setIsTransitioning(false)
       flight.current.start = -1
     }
@@ -677,6 +700,8 @@ export default function SolarPortfolio() {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [manualPaused, setManualPaused] = useState(false)
   const [focusPaused, setFocusPaused] = useState(false)
+  const [releaseFocusPauseOnSettle, setReleaseFocusPauseOnSettle] = useState(false)
+  const [returningToSystem, setReturningToSystem] = useState(false)
   const paused = manualPaused || focusPaused
   const controlsRef = useRef<CameraControlsRef | null>(null)
   // Stage of the rift cinematic, mirrored into React state at each stage
@@ -793,6 +818,25 @@ export default function SolarPortfolio() {
   }, [])
 
   const mode: Mode = selectedLandmark ? "moon" : selectedPlanet !== null ? "planet" : "system"
+  const cameraMode: Mode = returningToSystem ? "system" : mode
+
+  useEffect(() => {
+    if (!returningToSystem || isTransitioning) return
+    setSelectedPlanet(null)
+    setFocusTarget(null)
+    setPlanetRotation({ lon: 0, lat: 0 })
+    setReturningToSystem(false)
+    if (releaseFocusPauseOnSettle) {
+      setFocusPaused(false)
+      setReleaseFocusPauseOnSettle(false)
+    }
+  }, [isTransitioning, releaseFocusPauseOnSettle, returningToSystem])
+
+  useEffect(() => {
+    if (!releaseFocusPauseOnSettle || returningToSystem || isTransitioning || mode !== "system") return
+    setFocusPaused(false)
+    setReleaseFocusPauseOnSettle(false)
+  }, [isTransitioning, mode, releaseFocusPauseOnSettle, returningToSystem])
 
   // When in moon mode, derive the moon's index in its planet's landmark list so
   // we hand the same seed to MoonView that the orbiting moon used.
@@ -861,10 +905,12 @@ export default function SolarPortfolio() {
     const planet = planets[idx]
     if (!planet) return
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+    if (isTransitioning) return
 
     const target = new THREE.Vector3()
     object.getWorldPosition(target)
     setHoveredPlanet(null)
+    setReturningToSystem(false)
     if (!manualPaused && !focusPaused) setFocusPaused(true)
     setFocusTarget([target.x, target.y, target.z])
     setSelectedPlanet(idx)
@@ -924,8 +970,10 @@ export default function SolarPortfolio() {
   const handleNextMoon = useCallback(() => handleMoonStep(1), [handleMoonStep])
 
   const handleBackFromMoon = () => {
-    // Small→big: slow zoom-out from the moon scene; cut while everything is
-    // small; arrive close over the planet still moving outward, glide to 15.
+    // Small→big: slow zoom-out from the moon scene; the cut happens while
+    // everything is tiny, the camera arrives above the focused planet still
+    // moving outward and glides to its resting frame. The system reappears
+    // exactly at the cut — no fade (its shaders ignore opacity anyway).
     const planetTarget = focusTargetVector ?? ORIGIN
     startModeCut({
       targetObj: null,
@@ -947,10 +995,10 @@ export default function SolarPortfolio() {
 
   const handleBack = () => {
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
-    setSelectedPlanet(null)
     setSelectedLandmark(null)
-    setFocusTarget(null)
-    setFocusPaused(false)
+    setReturningToSystem(selectedPlanet !== null)
+    if (selectedPlanet === null) setFocusTarget(null)
+    setReleaseFocusPauseOnSettle(true)
     setHoveredPlanet(null)
     replaceQuery(null)
     setIsTransitioning(true)
@@ -965,6 +1013,8 @@ export default function SolarPortfolio() {
     setSelectedLandmark(null)
     setFocusTarget(null)
     setFocusPaused(false)
+    setReleaseFocusPauseOnSettle(false)
+    setReturningToSystem(false)
     setHoveredPlanet(null)
     setRiftStage("in")
     // Initialize the cinematic stage. CameraController will pick this up on
@@ -1001,11 +1051,14 @@ export default function SolarPortfolio() {
     <div className="w-full h-screen relative overflow-hidden">
       <Background variant={config.backgroundVariant} />
 
+      {/* No pointer-down transition cancel: interrupting a flight midway
+          re-enabled controls in a pose outside their clamps, which snapped
+          the camera (one of the jitter sources). Flights are short; they
+          always complete. */}
       <Canvas
         camera={{ position: [0, 52, 0], fov: 60 }}
         frameloop="always"
         gl={{ antialias: true }}
-        onPointerDown={() => isTransitioning && setIsTransitioning(false)}
       >
         <Suspense fallback={null}>
           <RenderHeartbeat />
@@ -1028,9 +1081,10 @@ export default function SolarPortfolio() {
           <CosmicDust variant={config.backgroundVariant} />
           <Environment preset="night" />
           <CameraController
-            mode={mode}
+            mode={cameraMode}
             isMobile={isMobile}
             focusTarget={focusTargetVector}
+            returningToSystem={returningToSystem}
             controlsRef={controlsRef}
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
@@ -1062,7 +1116,7 @@ export default function SolarPortfolio() {
                   planets={cfg.planets}
                   sunVariant={cfg.sunVariant}
                   paused={paused || !isActive}
-                  focusedPlanet={mode === "planet" && isActive ? selectedPlanet : null}
+                  focusedPlanet={(mode === "planet" || returningToSystem) && isActive ? selectedPlanet : null}
                   planetRotation={planetRotation}
                   onSunClick={toggleManualPause}
                   onPlanetClick={handlePlanetClick}
@@ -1088,14 +1142,14 @@ export default function SolarPortfolio() {
             // Mobile moon view: one-finger vertical swipes step through the
             // info sections (see moon-view.tsx), so rotation is disabled
             // there. Pinch zoom still works.
-            enableRotate={!(mode === "moon" && isMobile)}
+            enableRotate={!(cameraMode === "moon" && isMobile)}
             enableDamping
             dampingFactor={0.055}
-            minDistance={mode === "system" ? 30 : mode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
-            maxDistance={mode === "system" ? 90 : mode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
-            autoRotate={mode === "system" && !isTransitioning && !paused}
+            minDistance={cameraMode === "system" ? 30 : cameraMode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
+            maxDistance={cameraMode === "system" ? 90 : cameraMode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
+            autoRotate={cameraMode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
-            maxPolarAngle={mode === "system" ? Math.PI / 2.2 : Math.PI}
+            maxPolarAngle={cameraMode === "system" ? Math.PI / 2.2 : Math.PI}
             minPolarAngle={0}
           />
         </Suspense>

@@ -325,8 +325,8 @@ function MoonTerrain({
  */
 function MaterializeIn({
   children,
-  delay = 0.15,
-  duration = 0.9,
+  delay = 0.08,
+  duration = 1.45,
 }: {
   children: React.ReactNode
   delay?: number
@@ -334,19 +334,42 @@ function MaterializeIn({
 }) {
   const ref = useRef<Group>(null)
   const startRef = useRef<number | null>(null)
+  const completeRef = useRef(false)
 
   useFrame((state) => {
-    if (!ref.current) return
+    if (!ref.current || completeRef.current) return
     if (startRef.current === null) startRef.current = state.clock.elapsedTime
     const t = state.clock.elapsedTime - startRef.current - delay
     const k = Math.min(Math.max(t / duration, 0), 1)
-    const eased = 1 - Math.pow(1 - k, 3)
-    ref.current.scale.setScalar(Math.max(eased, 0.0001))
-    ref.current.visible = t > 0
+    const eased = k * k * k * (k * (k * 6 - 15) + 10)
+    ref.current.scale.setScalar(0.72 + eased * 0.28)
+    ref.current.visible = t > -0.02
+    ref.current.traverse((obj) => {
+      const material = (obj as Mesh).material
+      if (!material) return
+      const materials = Array.isArray(material) ? material : [material]
+      materials.forEach((mat) => {
+        const m = mat as THREE.Material & {
+          opacity?: number
+          userData: Record<string, unknown>
+        }
+        if (typeof m.opacity !== "number") return
+        if (m.userData.materializeBaseOpacity === undefined) {
+          m.userData.materializeBaseOpacity = m.opacity
+          m.userData.materializeBaseTransparent = m.transparent
+        }
+        const baseOpacity = m.userData.materializeBaseOpacity as number
+        const baseTransparent = m.userData.materializeBaseTransparent as boolean
+        m.opacity = baseOpacity * eased
+        m.transparent = eased < 0.999 || baseTransparent || baseOpacity < 0.999
+        m.needsUpdate = true
+      })
+    })
+    if (k >= 1) completeRef.current = true
   })
 
   return (
-    <group ref={ref} scale={0.0001} visible={false}>
+    <group ref={ref} scale={0.72} visible={false}>
       {children}
     </group>
   )
