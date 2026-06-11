@@ -11,9 +11,12 @@ interface SolarSystemProps {
   planets: PlanetEntry[]
   sunVariant: "warm" | "nebula"
   paused?: boolean
+  focusedPlanet?: number | null
+  planetRotation?: { lon: number; lat: number }
   onSunClick?: () => void
   /** object = the clicked planet mesh — tracked live during the dive. */
   onPlanetClick: (planetIndex: number, object: THREE.Object3D) => void
+  onLandmarkClick?: (landmark: PlanetEntry["landmarks"][number], object: THREE.Object3D) => void
   onPlanetHover: (planetIndex: number | null) => void
 }
 
@@ -21,8 +24,11 @@ export default function SolarSystem({
   planets,
   sunVariant,
   paused = false,
+  focusedPlanet = null,
+  planetRotation = { lon: 0, lat: 0 },
   onSunClick,
   onPlanetClick,
+  onLandmarkClick,
   onPlanetHover,
 }: SolarSystemProps) {
   const systemRef = useRef<Group>(null)
@@ -51,6 +57,11 @@ export default function SolarSystem({
           shape={planet.shape}
           seed={index * 17.31}
           paused={paused}
+          focused={focusedPlanet === index}
+          landmarks={planet.landmarks}
+          lonOffset={focusedPlanet === index ? planetRotation.lon : 0}
+          latOffset={focusedPlanet === index ? planetRotation.lat : 0}
+          onLandmarkClick={onLandmarkClick}
           onClick={(e) => {
             e.stopPropagation()
             onPlanetClick(index, e.object)

@@ -2,11 +2,11 @@
 
 import { Canvas, useThree, useFrame } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
-import { Suspense, useCallback, useEffect, useRef, useState, type MutableRefObject } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import * as THREE from "three"
-import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type Universe } from "@/lib/constants"
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
+import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type PlanetEntry, type Universe } from "@/lib/constants"
 import SolarSystem from "./solar-system"
-import Planet from "./planet"
 import StarField from "./star-field"
 import StarNest from "./star-nest"
 import Background from "./background"
@@ -61,6 +61,10 @@ const SETTLE_POS = {
   moon: (isMobile: boolean) => new THREE.Vector3(0, isMobile ? 21 : 12, 0.5),
 }
 
+function planetFocusSettle(target: THREE.Vector3, isMobile: boolean): THREE.Vector3 {
+  return target.clone().add(new THREE.Vector3(0, isMobile ? 5.5 : 3.8, isMobile ? 13 : 9.5))
+}
+
 // ── Mode-cut transitions (system↔planet↔moon) ───────────────────────────────
 // Pure camera moves, no overlay (the rift keeps its warp; these stay simple).
 //
@@ -86,9 +90,15 @@ const MODE_CUT = {
 } as const
 
 // Object radii used to compute match-cut distances.
-const PLANET_DETAIL_RADIUS = 4 // <Planet isDetailView size={4}>
 const MOON_CRYSTAL_RADIUS = 1.55 // MoonView's central data crystal
 const MOON_ORBIT_RADIUS = 0.36 // crystal moons orbiting a detail planet
+const CAMERA_FLIGHT = {
+  SYSTEM: 1.45,
+  PLANET: 1.65,
+  MOON: 1.35,
+} as const
+
+type CameraControlsRef = OrbitControlsImpl
 
 interface ModeCutState {
   phase: "idle" | "out" | "cut" | "in"
@@ -103,6 +113,8 @@ interface ModeCutState {
   cutDist: number
   /** Camera-to-origin distance right after the cut. */
   arriveDist: number
+  fromLookAt: THREE.Vector3
+  lookAtPos: THREE.Vector3
   settlePos: THREE.Vector3
   /** Mode we're heading to — the cut releases once this mode is mounted. */
   destMode: Mode
@@ -113,9 +125,34 @@ interface ModeCutState {
   commit: (() => void) | null
 }
 
+interface CameraFlightState {
+  key: string
+  start: number
+  fromPos: THREE.Vector3
+  fromLookAt: THREE.Vector3
+}
+
 // Scratch vectors — avoid per-frame allocations.
 const _approach = new THREE.Vector3()
 const _dir = new THREE.Vector3()
+
+function syncCameraLookAt(
+  camera: THREE.Camera,
+  controls: CameraControlsRef | null,
+  lookAt: THREE.Vector3,
+) {
+  if (controls) {
+    controls.target.copy(lookAt)
+  }
+  camera.lookAt(lookAt)
+  // NO controls.update() here. update() enforces min/max-distance and polar
+  // clamps, and mid-transition the camera is legitimately outside the
+  // destination mode's clamps (e.g. 52 away when planet mode allows 22) —
+  // calling it snapped the camera to the clamp while the flight lerp pulled
+  // it back, which read as a glitchy jitter at the start of every
+  // transition. Controls stay disabled during scripted moves; the idle
+  // branch does one clean update() at handoff.
+}
 
 function landmarkKey(landmark: Landmark): string {
   return `${landmark.name}::${landmark.category}`
@@ -130,9 +167,18 @@ function findLandmarkIndex(landmarks: Landmark[], landmark: Landmark | null): nu
   return landmarks.findIndex((candidate) => landmarkKey(candidate) === key)
 }
 
+function initialPlanetPosition(planet: PlanetEntry): THREE.Vector3 {
+  const position = new THREE.Vector3(planet.distance, 0, 0)
+  position.applyAxisAngle(new THREE.Vector3(0, 1, 0), planet.phase ?? 0)
+  position.applyAxisAngle(new THREE.Vector3(1, 0, 0), planet.tilt ?? 0)
+  return position
+}
+
 function CameraController({
   mode,
   isMobile,
+  focusTarget,
+  controlsRef,
   isTransitioning,
   setIsTransitioning,
   riftState,
@@ -143,6 +189,8 @@ function CameraController({
 }: {
   mode: Mode
   isMobile: boolean
+  focusTarget: THREE.Vector3 | null
+  controlsRef: MutableRefObject<CameraControlsRef | null>
   isTransitioning: boolean
   setIsTransitioning: (v: boolean) => void
   riftState: MutableRefObject<RiftCinematicState>
@@ -153,12 +201,24 @@ function CameraController({
 }) {
   const { camera } = useThree()
   const target = useRef(new THREE.Vector3(0, 25, 0))
+  const lookTarget = useRef(new THREE.Vector3(0, 0, 0))
+  const flight = useRef<CameraFlightState>({
+    key: "",
+    start: -1,
+    fromPos: new THREE.Vector3(),
+    fromLookAt: new THREE.Vector3(),
+  })
   // Captured camera position when stage 'in' starts, AND nearRift snapshot
   // when stage 'out' starts. Reused for the lerp source.
   const stageStartPos = useRef<THREE.Vector3 | null>(null)
 
   useFrame((state) => {
     const sr = riftState.current
+    const mw = modeWarp.current
+    const controls = controlsRef.current
+    if (controls) {
+      controls.enabled = sr.stage === "idle" && mw.phase === "idle" && !isTransitioning
+    }
 
     // ── Rift cinematic takes priority ─────────────────────────────────────
     // Stage machine driven by riftState.current (timing constants live in
@@ -213,7 +273,7 @@ function CameraController({
           const k = easeInOutCubic(t / RIFT_TIMING.IN_ROTATE_DURATION)
           camera.position.copy(stageStartPos.current!)
           _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
-          camera.lookAt(_lookAt)
+          syncCameraLookAt(camera, controls, _lookAt)
         } else if (t < RIFT_TIMING.IN_DURATION) {
           // ZOOM sub-phase: camera dollies start → nearRift, gaze locked
           // on the rift the whole time. Accelerating ease-in feels like
@@ -222,7 +282,7 @@ function CameraController({
             (t - RIFT_TIMING.IN_ROTATE_DURATION) / RIFT_TIMING.IN_ZOOM_DURATION
           const k = easeInCubic(Math.min(localT, 1))
           camera.position.lerpVectors(stageStartPos.current!, nearRift, k)
-          camera.lookAt(RIFT_WORLD_POS)
+          syncCameraLookAt(camera, controls, RIFT_WORLD_POS)
         } else {
           // 'in' → 'peak'. Fire the universe swap (the warp overlay is at
           // full opacity now, so it hides the actual mesh-tree swap).
@@ -232,7 +292,7 @@ function CameraController({
         }
       } else if (sr.stage === "peak") {
         camera.position.copy(nearRift)
-        camera.lookAt(RIFT_WORLD_POS)
+        syncCameraLookAt(camera, controls, RIFT_WORLD_POS)
 
         if (sr.ready && t >= RIFT_TIMING.PEAK_MIN_DURATION) {
           // 'peak' → 'out'. New universe shaders are compiled; release.
@@ -247,7 +307,7 @@ function CameraController({
           // overlay winds down to the flat core color. The core IS the
           // screen and matches the overlay base, so the reveal is seamless.
           camera.position.copy(nearRift)
-          camera.lookAt(RIFT_WORLD_POS)
+          syncCameraLookAt(camera, controls, RIFT_WORLD_POS)
         } else {
           // Slow pull-out: easeInOutCubic starts at ~zero velocity, so the
           // rift still engulfs the screen through the color-fade reveal,
@@ -261,7 +321,7 @@ function CameraController({
           )
           camera.position.lerpVectors(stageStartPos.current!, RIFT_OVERHEAD, k)
           _lookAt.lerpVectors(RIFT_WORLD_POS, ORIGIN, k)
-          camera.lookAt(_lookAt)
+          syncCameraLookAt(camera, controls, _lookAt)
         }
 
         if (t >= RIFT_TIMING.OUT_DURATION) {
@@ -276,7 +336,6 @@ function CameraController({
 
     // ── Mode-cut transitions (system↔planet↔moon) ─────────────────────────
     // See the MODE_CUT block above for the full choreography.
-    const mw = modeWarp.current
     if (mw.phase !== "idle") {
       if (mw.start < 0) {
         mw.start = state.clock.elapsedTime
@@ -294,10 +353,10 @@ function CameraController({
 
         const k = easeInOutCubic(Math.min(t / mw.outDur, 1))
         camera.position.lerpVectors(mw.fromPos, _approach, k)
-        // Recenter early (pan completes in the first ~half), then it's a
-        // pure zoom onto the object for the rest of the move.
-        _lookAt.lerpVectors(ORIGIN, mw.targetPos, Math.min(k * 2.2, 1))
-        camera.lookAt(_lookAt)
+        // Recenter from the actual current anchor. In planet mode this is
+        // the focused planet, not the origin.
+        _lookAt.lerpVectors(mw.fromLookAt, mw.targetPos, Math.min(k * 1.35, 1))
+        syncCameraLookAt(camera, controls, _lookAt)
 
         if (t >= mw.outDur) {
           // Swap the scene behind the object (big→small: it fills the
@@ -314,7 +373,7 @@ function CameraController({
         }
       } else if (mw.phase === "cut") {
         camera.position.copy(mw.fromPos)
-        camera.lookAt(mw.targetPos)
+        syncCameraLookAt(camera, controls, mw.targetPos)
         mw.holdFrames += 1
 
         if (
@@ -323,41 +382,86 @@ function CameraController({
         ) {
           mw.phase = "in"
           mw.start = state.clock.elapsedTime
-          _dir.copy(mw.settlePos).normalize()
-          mw.fromPos.copy(_dir).multiplyScalar(mw.arriveDist)
+          // Orientation-continuous arrival: keep the camera's direction
+          // RELATIVE to the old anchor, re-applied around the new anchor.
+          // Diving into a moon from the side cuts to the data crystal seen
+          // from the same side; zooming out above the moon scene cuts to
+          // hovering above the planet. The gaze direction never jumps.
+          _dir.copy(mw.fromPos).sub(mw.targetPos)
+          if (_dir.lengthSq() < 1e-6) _dir.copy(mw.settlePos).sub(mw.lookAtPos)
+          if (_dir.lengthSq() < 1e-6) _dir.set(0, 0, 1)
+          _dir.normalize()
+          // Never arrive from below — the moon scene has a terrain disc at
+          // y≈-2.5 the camera shouldn't start under.
+          _dir.y = Math.max(_dir.y, 0.05)
+          _dir.normalize()
+          mw.fromPos.copy(mw.lookAtPos).addScaledVector(_dir, mw.arriveDist)
           camera.position.copy(mw.fromPos)
-          camera.lookAt(ORIGIN)
+          syncCameraLookAt(camera, controls, mw.lookAtPos)
         }
       } else {
         // Arrival — starts with velocity (continuing the cut's motion) and
         // brakes into the settle position.
         const k = easeOutCubic(Math.min(t / mw.inDur, 1))
         camera.position.lerpVectors(mw.fromPos, mw.settlePos, k)
-        camera.lookAt(ORIGIN)
+        syncCameraLookAt(camera, controls, mw.lookAtPos)
 
         if (t >= mw.inDur) {
           mw.phase = "idle"
           mw.start = -1
+          lookTarget.current.copy(mw.lookAtPos)
         }
       }
       return
     }
 
-    if (!isTransitioning) return
+    const nextLookTarget = focusTarget && mode === "planet" ? focusTarget : ORIGIN
     if (mode === "moon") {
       // Default top-down. Sprite Html cards billboard to face the camera so
       // they stay readable regardless of angle. Tiny z offset breaks the
       // OrbitControls gimbal-lock singularity at polar angle 0.
       target.current.copy(SETTLE_POS.moon(isMobile))
     } else if (mode === "planet") {
-      target.current.copy(SETTLE_POS.planet(isMobile))
+      target.current.copy(focusTarget ? planetFocusSettle(focusTarget, isMobile) : SETTLE_POS.planet(isMobile))
     } else {
       target.current.copy(SETTLE_POS.system())
     }
-    camera.position.lerp(target.current, 0.04)
-    camera.lookAt(0, 0, 0)
-    if (camera.position.distanceTo(target.current) < 0.5) {
+    const flightKey = `${mode}:${isMobile ? "m" : "d"}:${nextLookTarget.x.toFixed(3)}:${nextLookTarget.y.toFixed(3)}:${nextLookTarget.z.toFixed(3)}`
+
+    if (!isTransitioning) {
+      flight.current.key = flightKey
+      flight.current.start = -1
+      lookTarget.current.copy(nextLookTarget)
+      if (controls && controls.target.distanceTo(nextLookTarget) > 0.001) {
+        controls.target.copy(nextLookTarget)
+        controls.update()
+      }
+      return
+    }
+
+    if (flight.current.key !== flightKey || flight.current.start < 0) {
+      flight.current.key = flightKey
+      flight.current.start = state.clock.elapsedTime
+      flight.current.fromPos.copy(camera.position)
+      flight.current.fromLookAt.copy(controls?.target ?? lookTarget.current)
+    }
+
+    const duration =
+      mode === "planet"
+        ? CAMERA_FLIGHT.PLANET
+        : mode === "moon"
+          ? CAMERA_FLIGHT.MOON
+          : CAMERA_FLIGHT.SYSTEM
+    const k = easeInOutCubic(
+      Math.min((state.clock.elapsedTime - flight.current.start) / duration, 1),
+    )
+    camera.position.lerpVectors(flight.current.fromPos, target.current, k)
+    lookTarget.current.lerpVectors(flight.current.fromLookAt, nextLookTarget, k)
+    syncCameraLookAt(camera, controls, lookTarget.current)
+
+    if (k >= 1) {
       setIsTransitioning(false)
+      flight.current.start = -1
     }
   })
 
@@ -566,11 +670,15 @@ export default function SolarPortfolio() {
   const isMobile = useMediaQuery(MOBILE_QUERY)
   const [universe, setUniverse] = useState<Universe>("professional")
   const [selectedPlanet, setSelectedPlanet] = useState<number | null>(null)
+  const [focusTarget, setFocusTarget] = useState<[number, number, number] | null>(null)
   const [planetRotation, setPlanetRotation] = useState({ lon: 0, lat: 0 })
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null)
   const [selectedLandmark, setSelectedLandmark] = useState<Landmark | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const [paused, setPaused] = useState(false)
+  const [manualPaused, setManualPaused] = useState(false)
+  const [focusPaused, setFocusPaused] = useState(false)
+  const paused = manualPaused || focusPaused
+  const controlsRef = useRef<CameraControlsRef | null>(null)
   // Stage of the rift cinematic, mirrored into React state at each stage
   // boundary (via CameraController's onSwapUniverse / onStageOut /
   // onCinematicComplete callbacks) so the DOM warp overlay can react to it.
@@ -592,6 +700,8 @@ export default function SolarPortfolio() {
     targetObj: null,
     cutDist: 1,
     arriveDist: 1,
+    fromLookAt: new THREE.Vector3(),
+    lookAtPos: new THREE.Vector3(),
     settlePos: new THREE.Vector3(),
     destMode: "system",
     holdFrames: 0,
@@ -631,21 +741,29 @@ export default function SolarPortfolio() {
     joystickRef.current = vel
   }
 
+  const toggleManualPause = useCallback(() => {
+    setManualPaused((p) => !p)
+  }, [])
+
   // Spacebar = global pause toggle (so people can freeze the system to click moons easily)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "Space" && !(e.target instanceof HTMLInputElement)) {
         e.preventDefault()
-        setPaused((p) => !p)
+        toggleManualPause()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [toggleManualPause])
 
   const config = UNIVERSE_CONFIG[universe]
   const planets = config.planets
   const selected = selectedPlanet !== null ? planets[selectedPlanet] : null
+  const focusTargetVector = useMemo(
+    () => (focusTarget ? new THREE.Vector3(...focusTarget) : null),
+    [focusTarget],
+  )
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -654,18 +772,22 @@ export default function SolarPortfolio() {
     const universeParam = params.get("universe")
     const planetParam = params.get("planet")
     const moonParam = params.get("moon")
-    if (!universeParam || planetParam === null || moonParam === null) return
+    if (!universeParam || planetParam === null) return
     if (universeParam !== "professional" && universeParam !== "personal") return
 
     const planetIndex = Number.parseInt(planetParam, 10)
-    const moonIndex = Number.parseInt(moonParam, 10)
     const targetPlanet = UNIVERSE_CONFIG[universeParam].planets[planetIndex]
-    const targetMoon = targetPlanet?.landmarks[moonIndex]
-    if (!targetPlanet || !targetMoon) return
+    if (!targetPlanet) return
+
+    const planetPosition = initialPlanetPosition(targetPlanet)
+    const moonIndex = moonParam === null ? -1 : Number.parseInt(moonParam, 10)
+    const targetMoon = moonIndex >= 0 ? targetPlanet.landmarks[moonIndex] ?? null : null
 
     setUniverse(universeParam)
     setSelectedPlanet(planetIndex)
+    setFocusTarget([planetPosition.x, planetPosition.y, planetPosition.z])
     setSelectedLandmark(targetMoon)
+    setFocusPaused(true)
     setHoveredPlanet(null)
     setIsTransitioning(true)
   }, [])
@@ -704,6 +826,8 @@ export default function SolarPortfolio() {
     targetObj: THREE.Object3D | null
     cutDist: number
     arriveDist: number
+    fromLookAt?: THREE.Vector3
+    lookAtPos?: THREE.Vector3
     settlePos: THREE.Vector3
     destMode: Mode
     outDur: number
@@ -723,6 +847,8 @@ export default function SolarPortfolio() {
     }
     mw.cutDist = opts.cutDist
     mw.arriveDist = opts.arriveDist
+    mw.fromLookAt.copy(opts.fromLookAt ?? ORIGIN)
+    mw.lookAtPos.copy(opts.lookAtPos ?? ORIGIN)
     mw.settlePos.copy(opts.settlePos)
     mw.destMode = opts.destMode
     mw.holdFrames = 0
@@ -734,36 +860,33 @@ export default function SolarPortfolio() {
   const handlePlanetClick = (idx: number, object: THREE.Object3D) => {
     const planet = planets[idx]
     if (!planet) return
-    // Dive until the planet fills the frame; cut to the detail planet
-    // filling the frame the same way, then ease out to the settle distance.
-    startModeCut({
-      targetObj: object,
-      cutDist: MODE_CUT.FILL_FACTOR * planet.size,
-      arriveDist: MODE_CUT.FILL_FACTOR * PLANET_DETAIL_RADIUS,
-      settlePos: SETTLE_POS.planet(isMobile),
-      destMode: "planet",
-      outDur: MODE_CUT.DIVE_OUT,
-      inDur: MODE_CUT.DIVE_IN,
-      commit: () => {
-        setSelectedPlanet(idx)
-        replaceQuery(idx, null)
-        setPlanetRotation({ lon: 0, lat: 0 })
-      },
-    })
+    if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+
+    const target = new THREE.Vector3()
+    object.getWorldPosition(target)
+    setHoveredPlanet(null)
+    if (!manualPaused && !focusPaused) setFocusPaused(true)
+    setFocusTarget([target.x, target.y, target.z])
+    setSelectedPlanet(idx)
+    replaceQuery(idx, null)
+    setPlanetRotation({ lon: 0, lat: 0 })
+    setIsTransitioning(true)
   }
 
   const handleLandmarkClick = (landmark: Landmark, object: THREE.Object3D) => {
     const moonIndex = selected ? findLandmarkIndex(selected.landmarks, landmark) : -1
-    // Dive into the little crystal moon; cut to the moon view's data
-    // crystal filling the frame the same way.
+    const moonSettle = SETTLE_POS.moon(isMobile)
+    // Pan from the focused planet to the clicked moon, then make a small
+    // arrival adjustment into the moon scene instead of a big in/out lurch.
     startModeCut({
       targetObj: object,
-      cutDist: MODE_CUT.FILL_FACTOR * MOON_ORBIT_RADIUS,
-      arriveDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
-      settlePos: SETTLE_POS.moon(isMobile),
+      cutDist: isMobile ? 2.8 : 2.1,
+      arriveDist: moonSettle.length() * 0.92,
+      fromLookAt: focusTargetVector ?? ORIGIN,
+      settlePos: moonSettle,
       destMode: "moon",
-      outDur: MODE_CUT.DIVE_OUT,
-      inDur: MODE_CUT.DIVE_IN,
+      outDur: 1.15,
+      inDur: 0.95,
       commit: () => {
         setSelectedLandmark(landmark)
         if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex)
@@ -803,11 +926,15 @@ export default function SolarPortfolio() {
   const handleBackFromMoon = () => {
     // Small→big: slow zoom-out from the moon scene; cut while everything is
     // small; arrive close over the planet still moving outward, glide to 15.
+    const planetTarget = focusTargetVector ?? ORIGIN
     startModeCut({
       targetObj: null,
       cutDist: 30,
       arriveDist: 9.5,
-      settlePos: SETTLE_POS.planet(isMobile),
+      lookAtPos: planetTarget,
+      settlePos: focusTargetVector
+        ? planetFocusSettle(focusTargetVector, isMobile)
+        : SETTLE_POS.planet(isMobile),
       destMode: "planet",
       outDur: MODE_CUT.ZOOM_OUT,
       inDur: MODE_CUT.ZOOM_IN,
@@ -819,23 +946,14 @@ export default function SolarPortfolio() {
   }
 
   const handleBack = () => {
-    // Small→big: slow zoom-out from the planet scene; cut far out; arrive
-    // over the system still moving outward, glide up to the overhead view.
-    startModeCut({
-      targetObj: null,
-      cutDist: 38,
-      arriveDist: 34,
-      settlePos: SETTLE_POS.system(),
-      destMode: "system",
-      outDur: MODE_CUT.ZOOM_OUT,
-      inDur: MODE_CUT.ZOOM_IN,
-      commit: () => {
-        setSelectedPlanet(null)
-        setSelectedLandmark(null)
-        setHoveredPlanet(null)
-        replaceQuery(null)
-      },
-    })
+    if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+    setSelectedPlanet(null)
+    setSelectedLandmark(null)
+    setFocusTarget(null)
+    setFocusPaused(false)
+    setHoveredPlanet(null)
+    replaceQuery(null)
+    setIsTransitioning(true)
   }
 
   const handleEnterRift = () => {
@@ -845,6 +963,8 @@ export default function SolarPortfolio() {
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
     setSelectedPlanet(null)
     setSelectedLandmark(null)
+    setFocusTarget(null)
+    setFocusPaused(false)
     setHoveredPlanet(null)
     setRiftStage("in")
     // Initialize the cinematic stage. CameraController will pick this up on
@@ -910,6 +1030,8 @@ export default function SolarPortfolio() {
           <CameraController
             mode={mode}
             isMobile={isMobile}
+            focusTarget={focusTargetVector}
+            controlsRef={controlsRef}
             isTransitioning={isTransitioning}
             setIsTransitioning={setIsTransitioning}
             riftState={riftState}
@@ -922,67 +1044,46 @@ export default function SolarPortfolio() {
 
           <ambientLight intensity={LIGHTING.ambient} />
 
-          {mode === "system" && (
-            <>
-              {/* Dual-mount — both universes mounted from app start, hidden
-                  one toggled via visible=false. ShaderWarmer (one mount
-                  below) compiles both universes' shader programs at
-                  startup so the rift swap is just a visibility flip,
-                  not a synchronous shader compile that stalls the
-                  WebGL frame loop. */}
-              {(["professional", "personal"] as Universe[]).map((u) => {
-                const cfg = UNIVERSE_CONFIG[u]
-                const isActive = u === universe
-                return (
-                  <group
-                    key={u}
-                    ref={(group) => {
-                      systemGroupRefs.current[u] = group
-                    }}
-                    visible={isActive}
-                  >
-                    <SolarSystem
-                      planets={cfg.planets}
-                      sunVariant={cfg.sunVariant}
-                      paused={paused || !isActive}
-                      onSunClick={() => setPaused((p) => !p)}
-                      onPlanetClick={handlePlanetClick}
-                      onPlanetHover={setHoveredPlanet}
-                    />
-                    <Rift onClick={handleEnterRift} universe={u} paused={paused || !isActive} />
-                  </group>
-                )
-              })}
-              <ShaderWarmer systemGroupRefs={systemGroupRefs} />
-            </>
-          )}
-
-          {mode === "planet" && selected && (
-            <Planet
-              isDetailView
-              size={4}
-              type={selected.type}
-              accentColor={selected.color}
-              bump={selected.bump}
-              shape={selected.shape}
-              seed={(selectedPlanet ?? 0) * 17.31}
-              landmarks={selected.landmarks}
-              lonOffset={planetRotation.lon}
-              latOffset={planetRotation.lat}
-              paused={paused}
-              onLandmarkClick={handleLandmarkClick}
-            />
-          )}
+          {/* Dual-mount — both universes stay mounted from app start. The
+              active universe remains visible through system and planet modes,
+              so planet focus happens in the same solar-system scene. */}
+          {(["professional", "personal"] as Universe[]).map((u) => {
+            const cfg = UNIVERSE_CONFIG[u]
+            const isActive = u === universe
+            return (
+              <group
+                key={u}
+                ref={(group) => {
+                  systemGroupRefs.current[u] = group
+                }}
+                visible={mode !== "moon" && isActive}
+              >
+                <SolarSystem
+                  planets={cfg.planets}
+                  sunVariant={cfg.sunVariant}
+                  paused={paused || !isActive}
+                  focusedPlanet={mode === "planet" && isActive ? selectedPlanet : null}
+                  planetRotation={planetRotation}
+                  onSunClick={toggleManualPause}
+                  onPlanetClick={handlePlanetClick}
+                  onLandmarkClick={handleLandmarkClick}
+                  onPlanetHover={setHoveredPlanet}
+                />
+                <Rift onClick={handleEnterRift} universe={u} paused={paused || !isActive} />
+              </group>
+            )
+          })}
+          <ShaderWarmer systemGroupRefs={systemGroupRefs} />
 
           {mode === "moon" && selectedLandmark && (
             <MoonView landmark={selectedLandmark} seed={landmarkSeed} universe={universe} isMobile={isMobile} />
           )}
 
           <OrbitControls
+            ref={controlsRef}
             // Pan stays off so rotation is always anchored to the sun (system),
-            // the planet (planet detail), or the data crystal (moon).
+            // the focused planet, or the data crystal (moon).
             enablePan={false}
-            target={[0, 0, 0]}
             enableZoom
             // Mobile moon view: one-finger vertical swipes step through the
             // info sections (see moon-view.tsx), so rotation is disabled
@@ -990,8 +1091,8 @@ export default function SolarPortfolio() {
             enableRotate={!(mode === "moon" && isMobile)}
             enableDamping
             dampingFactor={0.055}
-            minDistance={mode === "system" ? 30 : mode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 14 : 10)}
-            maxDistance={mode === "system" ? 90 : mode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 30 : 24)}
+            minDistance={mode === "system" ? 30 : mode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
+            maxDistance={mode === "system" ? 90 : mode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
             autoRotate={mode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
             maxPolarAngle={mode === "system" ? Math.PI / 2.2 : Math.PI}
@@ -1013,7 +1114,7 @@ export default function SolarPortfolio() {
         config={config}
         mode={mode}
         paused={paused}
-        onTogglePause={() => setPaused((p) => !p)}
+        onTogglePause={toggleManualPause}
         selectedPlanet={selectedPlanet}
         hoveredPlanet={hoveredPlanet}
         selectedLandmark={selectedLandmark}

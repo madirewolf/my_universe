@@ -8,6 +8,7 @@ import * as THREE from "three"
 import type { Group, Mesh } from "three"
 import type { ThreeEvent } from "@react-three/fiber"
 import type { Landmark, Universe } from "@/lib/constants"
+import { makeCrystalMoon } from "./planet"
 
 type CardKind = "title" | "desc" | "tech" | "link" | "images"
 type MoonConcept =
@@ -125,23 +126,8 @@ function conceptForLandmark(landmark: Landmark, seed: number): MoonConcept {
   return FALLBACK_CONCEPTS[Math.abs(Math.round(seed)) % FALLBACK_CONCEPTS.length]
 }
 
-function makeCrystalGeometry(radius: number, seed: number) {
-  const geometry = new THREE.IcosahedronGeometry(radius, 2)
-  const position = geometry.attributes.position
-  for (let i = 0; i < position.count; i++) {
-    const x = position.getX(i)
-    const y = position.getY(i)
-    const z = position.getZ(i)
-    const n =
-      seeded(seed, i * 1.7) * 0.16 +
-      seeded(seed, i * 4.1) * 0.08 -
-      seeded(seed, i * 2.9) * 0.06
-    position.setXYZ(i, x * (1 + n), y * (1 + n), z * (1 + n))
-  }
-  position.needsUpdate = true
-  geometry.computeVertexNormals()
-  return geometry
-}
+// (The data crystal's geometry now comes from planet.tsx's makeCrystalMoon —
+// same recipe + same seed as the orbiting moon, so they're identical twins.)
 
 function makeSections(landmark: Landmark, universe: Universe): SectionData[] {
   const labels = SECTION_LABELS[universe]
@@ -331,6 +317,41 @@ function MoonTerrain({
   )
 }
 
+/**
+ * Scales its children in from ~0 after mount — the moon diorama (terrain,
+ * beacons, projections) crystallizes around the data crystal on arrival.
+ * The crystal itself is NOT wrapped: it's the match-cut anchor from the
+ * planet scene and must be there from the very first frame.
+ */
+function MaterializeIn({
+  children,
+  delay = 0.15,
+  duration = 0.9,
+}: {
+  children: React.ReactNode
+  delay?: number
+  duration?: number
+}) {
+  const ref = useRef<Group>(null)
+  const startRef = useRef<number | null>(null)
+
+  useFrame((state) => {
+    if (!ref.current) return
+    if (startRef.current === null) startRef.current = state.clock.elapsedTime
+    const t = state.clock.elapsedTime - startRef.current - delay
+    const k = Math.min(Math.max(t / duration, 0), 1)
+    const eased = 1 - Math.pow(1 - k, 3)
+    ref.current.scale.setScalar(Math.max(eased, 0.0001))
+    ref.current.visible = t > 0
+  })
+
+  return (
+    <group ref={ref} scale={0.0001} visible={false}>
+      {children}
+    </group>
+  )
+}
+
 function DataCrystal({
   color,
   seed,
@@ -345,7 +366,11 @@ function DataCrystal({
   const outerRef = useRef<Mesh>(null)
   const innerRef = useRef<Mesh>(null)
   const haloRef = useRef<Mesh>(null)
-  const geometry = useMemo(() => makeCrystalGeometry(CRYSTAL_RADIUS, seed), [seed])
+  // SAME recipe + SAME seed as the orbiting crystal moon in planet.tsx —
+  // the displacement is radius-relative, so this crystal is an identical
+  // (bigger) twin of the exact moon the user dove into. That's what makes
+  // the planet→moon cut read as one continuous object.
+  const geometry = useMemo(() => makeCrystalMoon(CRYSTAL_RADIUS, seed), [seed])
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
@@ -381,22 +406,26 @@ function DataCrystal({
           onMenuLeave()
         }}
       >
+        {/* Material matches the orbiting moon exactly (emissive 0.6,
+            rough 0.32, metal 0.78) so the handoff doesn't shift tone. */}
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={0.62}
-          roughness={0.34}
+          emissiveIntensity={0.6}
+          roughness={0.32}
           metalness={0.78}
           flatShading
         />
       </mesh>
       <mesh ref={innerRef}>
-        <icosahedronGeometry args={[CRYSTAL_RADIUS * 0.48, 0]} />
-        <meshBasicMaterial color={color} transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <icosahedronGeometry args={[CRYSTAL_RADIUS * 0.55, 0]} />
+        <meshBasicMaterial color={color} transparent opacity={0.38} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
+      {/* Halo ratio + strength match the orbiting moon's glow (0.55/0.36 ≈
+          1.53× radius at opacity 0.18) so the arrival keeps the same aura. */}
       <mesh ref={haloRef}>
-        <sphereGeometry args={[CRYSTAL_RADIUS * 1.45, 36, 36]} />
-        <meshBasicMaterial color={color} transparent opacity={0.07} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[CRYSTAL_RADIUS * 1.53, 36, 36]} />
+        <meshBasicMaterial color={color} transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
       <mesh
         onPointerOver={(event) => {
@@ -599,7 +628,7 @@ function SectionOrbitMenu({
           opacity: visible ? 1 : 0,
           visibility: visible ? "visible" : "hidden",
           pointerEvents: "auto",
-          fontFamily: "var(--font-geist-sans), system-ui, -apple-system, sans-serif",
+          fontFamily: "var(--font-sans), system-ui, -apple-system, sans-serif",
           perspective: 700,
           userSelect: "none",
           transition: "opacity 170ms ease, visibility 170ms ease",
@@ -865,7 +894,7 @@ function InfoDeck({
     position: "absolute",
     inset: 0,
     pointerEvents: "none",
-    fontFamily: "var(--font-geist-sans), system-ui, -apple-system, sans-serif",
+    fontFamily: "var(--font-sans), system-ui, -apple-system, sans-serif",
   }
   const panel: CSSProperties = isMobile
     ? {
@@ -890,9 +919,19 @@ function InfoDeck({
     // `style` to reach the fullscreen container.
     <Html fullscreen zIndexRange={[18, 0]} style={{ pointerEvents: "none" }}>
       <div style={shell}>
+        <style>{`
+          @keyframes moon-ui-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
         <div style={panel} data-moon-swipe-ignore>
           <div
+            // Keyed per moon so hopping moons replays the entrance — the
+            // panel eases in after the diorama starts crystallizing.
+            key={landmark.name}
             style={{
+              animation: "moon-ui-in 0.55s ease 0.4s backwards",
               borderRadius: isMobile ? 14 : 16,
               overflow: "hidden",
               background: moonGlassBackground(color),
@@ -1152,30 +1191,35 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
 
   return (
     <group>
-      <ConceptSet concept={concept} color={landmark.color} seed={seed + hashString(landmark.name) * 0.0001} isMobile={isMobile} />
+      {/* Crystal first, world second: the crystal is the continuity anchor
+          from the planet scene; the rest of the diorama crystallizes in
+          around it. Keyed per landmark so moon-hopping re-materializes. */}
       <DataCrystal
         color={landmark.color}
         seed={seed}
         onMenuEnter={showMenu}
         onMenuLeave={scheduleHideMenu}
       />
-      {sections.map((section, index) => (
-        <SectionBeacon
-          key={section.kind}
+      <MaterializeIn key={landmark.name}>
+        <ConceptSet concept={concept} color={landmark.color} seed={seed + hashString(landmark.name) * 0.0001} isMobile={isMobile} />
+        {sections.map((section, index) => (
+          <SectionBeacon
+            key={section.kind}
+            concept={concept}
+            position={positions[index]}
+            active={index === activeIndex}
+            color={landmark.color}
+            onSelect={() => setActiveIndex(index)}
+          />
+        ))}
+        <ActiveProjection
           concept={concept}
-          position={positions[index]}
-          active={index === activeIndex}
+          activeIndex={activeIndex}
+          total={sections.length}
+          positions={positions}
           color={landmark.color}
-          onSelect={() => setActiveIndex(index)}
         />
-      ))}
-      <ActiveProjection
-        concept={concept}
-        activeIndex={activeIndex}
-        total={sections.length}
-        positions={positions}
-        color={landmark.color}
-      />
+      </MaterializeIn>
       <SectionOrbitMenu
         sections={sections}
         activeIndex={activeIndex}
