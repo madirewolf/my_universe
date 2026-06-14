@@ -20,8 +20,28 @@ export interface Landmark {
   color: string
   /** Optional image paths (relative to /public, e.g. "/nyx/img.webp"). */
   images?: string[]
+  /** Optional extra text panels rendered after the main description. */
+  notes?: { label: string; kicker?: string; body: string }[]
   /** Optional list of labelled links rendered as stacked buttons. */
   links?: { label: string; url: string }[]
+  /** Optional per-moon UI labels for the generated section tabs. */
+  sectionLabels?: {
+    story?: string
+    tech?: string
+    link?: string
+    images?: string
+  }
+  /** Optional per-moon subtitles under tab labels. */
+  sectionKickers?: {
+    story?: string
+    tech?: string
+    link?: string
+    images?: string
+  }
+  /** Hide the generated technologies/chips section when it is redundant. */
+  hideTech?: boolean
+  /** Render the generated tech section as prose instead of chips. */
+  techAsText?: string
 }
 
 /** Geometric shape of a planet's body. Defaults to "sphere". */
@@ -102,6 +122,7 @@ const PROFESSIONAL: UniverseConfig = {
           ],
           color: "#ff0080",
           link: "https://github.com/yixinlok/pinball",
+          images: ["/professional/de1-soc-pinball.png"],
         },
         {
           name: "Pixelmon Dream Generator",
@@ -111,6 +132,7 @@ const PROFESSIONAL: UniverseConfig = {
           technologies: ["DCGAN", "Convolutional Networks", "Image Preprocessing", "Python/Jupyter", "Git/GitHub"],
           color: "#ff66c4",
           link: "https://github.com/ahhmed-e/dcgan-pokemon",
+          images: ["/professional/pixelmon-dream-generator.png"],
         },
         {
           name: "Real-Time Web Audio Instrument",
@@ -125,6 +147,7 @@ const PROFESSIONAL: UniverseConfig = {
             "interactive sound generation",
           ],
           color: "#ff4fb3",
+          images: ["/professional/web-audio-instrument.png"],
         },
       ],
     },
@@ -156,6 +179,7 @@ const PROFESSIONAL: UniverseConfig = {
           ],
           color: "#00d470",
           link: "https://youtu.be/e3XM7Xxnoa0?feature=shared",
+          images: ["/professional/delorean-map.png"],
         },
         {
           name: "DeLorean Route Optimizer",
@@ -212,6 +236,37 @@ const PROFESSIONAL: UniverseConfig = {
           ],
           color: "#4080ff",
           link: "https://github.com/sk-porwal/capstone",
+          images: ["/professional/helicopter-capstone.png"],
+        },
+        {
+          name: "GPS-Denied Navigation Module",
+          category: "Autonomy & Sensor Fusion",
+          description:
+            "Active Vimy product R&D for flight-controller-agnostic GPS-denial support on small UAVs. Built a working demo that fuses vision, inertial, and lidar-derived state into MAVLink-compatible GPS/odometry outputs, then continued hardening the architecture with deterministic replay tooling, Docker builds, and license-clean dependency gates.",
+          technologies: [
+            "Python",
+            "C++",
+            "ROS",
+            "Kimera-VIO",
+            "OpenCV",
+            "EKF",
+            "MAVLink",
+            "Docker",
+            "GitHub Actions",
+            "deterministic replay",
+            "license audit",
+          ],
+          color: "#00e0ff",
+          images: ["/professional/gnss-denied-demo.png"],
+        },
+        {
+          name: "FinalFusion · Maritime Domain Awareness",
+          category: "Multi-Modal Sensor Fusion",
+          description:
+            "Built prototype/demo architecture for a proposed Vimy maritime-domain-awareness pipeline fusing heterogeneous sensor streams into explainable, policy-aware outputs. The concept maps to DND/CAF multi-modal AI needs: SAR, optical, AIS, weather/ice, legacy radar, and OSINT sources fused into situational-awareness outputs with transparency hooks rather than black-box answers.",
+          technologies: ["Sentinel-1 SAR", "Sentinel-2 Optical", "AIS", "AMSR2", "RADARSAT-1", "OSINT", "Multi-Sensor Fusion", "Explainable AI", "IEEE 7001", "Python"],
+          color: "#00b8d4",
+          images: ["/professional/flare-finalfusion-demo.png"],
         },
       ],
     },
@@ -253,7 +308,7 @@ const PROFESSIONAL: UniverseConfig = {
           color: "#8b5cff",
         },
         {
-          name: "GeniusActivities - ForecastEx Trading Runner",
+          name: "IBKR Auto-Trader Manager",
           category: "Decision Systems / Live Risk",
           description:
             "Live-money multi-strategy runner against Interactive Brokers ForecastEx using ib_async, with a hard daily loss circuit-breaker and an 8-point trade-approval gate before any prospective entry. The interesting part is not finance as an aesthetic; it is automation under real risk, where ranking, approval logic, scheduling, ledgering, and shutdown behavior all have consequences.",
@@ -268,6 +323,28 @@ const PROFESSIONAL: UniverseConfig = {
             "approval gates",
           ],
           color: "#a78bfa",
+          images: [
+            "/professional/ibkr-auto-trader-connect.png",
+            "/professional/ibkr-auto-trader-strategies.png",
+            "/professional/ibkr-auto-trader-trades.png",
+          ],
+        },
+        {
+          name: "AMMVER - Emerging Threat Forecasting",
+          category: "Explainable Forecasting / Defence AI",
+          description:
+            "Led engineering for Vimy's DND IDEaS Fast Forward project forecasting global emerging threats using a hybrid neural-network and hidden-Markov-model approach. Built and presented an explainable conflict-forecasting concept live to a technical and military review audience, tying public information, statistical modeling, and machine-learning forecasts into a decision-support workflow.",
+          technologies: [
+            "Hybrid neural networks",
+            "Hidden Markov models",
+            "Explainable AI",
+            "Conflict forecasting",
+            "DND IDEaS",
+            "Decision support",
+            "Policy-aware outputs",
+          ],
+          color: "#9d8bff",
+          images: ["/professional/ammver-map.png"],
         },
       ],
     },
@@ -280,7 +357,7 @@ const PROFESSIONAL: UniverseConfig = {
       tilt: -0.04,
       bump: 0,
       shape: "cube",
-      name: "Software & Systems Engineering Planet",
+      name: "Tenstorrent",
       description: "Software Architecture & Systems Design",
       color: "#ff8000",
       tags: ["Python", "CI/CD", "Hardware", "Systems"],
@@ -301,6 +378,13 @@ const PROFESSIONAL: UniverseConfig = {
           ],
           color: "#ff8000",
           link: "https://tenstorrent.com/en",
+          images: [
+            "/professional/tenstorrent-server.png",
+            "/professional/tenstorrent-board-lineage.png",
+            "/professional/tenstorrent-chip-socket.png",
+            "/professional/tenstorrent-system-interface.png",
+            "/professional/tenstorrent-debug-rig.png",
+          ],
         },
       ],
     },
@@ -318,34 +402,6 @@ const PROFESSIONAL: UniverseConfig = {
       tags: ["Vimy", "Autonomy", "Defence AI", "Sensor Fusion", "Demos"],
       landmarks: [
         {
-          name: "GPS-Denied Navigation Module",
-          category: "Autonomy & Sensor Fusion",
-          description:
-            "Active Vimy product R&D for flight-controller-agnostic GPS-denial support on small UAVs. Built a working demo that fuses vision, inertial, and lidar-derived state into MAVLink-compatible GPS/odometry outputs, then continued hardening the architecture with deterministic replay tooling, Docker builds, and license-clean dependency gates.",
-          technologies: [
-            "Python",
-            "C++",
-            "ROS",
-            "Kimera-VIO",
-            "OpenCV",
-            "EKF",
-            "MAVLink",
-            "Docker",
-            "GitHub Actions",
-            "deterministic replay",
-            "license audit",
-          ],
-          color: "#00e0ff",
-        },
-        {
-          name: "FinalFusion · Maritime Domain Awareness",
-          category: "Multi-Modal Sensor Fusion",
-          description:
-            "Built prototype/demo architecture for a proposed Vimy maritime-domain-awareness pipeline fusing heterogeneous sensor streams into explainable, policy-aware outputs. The concept maps to DND/CAF multi-modal AI needs: SAR, optical, AIS, weather/ice, legacy radar, and OSINT sources fused into situational-awareness outputs with transparency hooks rather than black-box answers.",
-          technologies: ["Sentinel-1 SAR", "Sentinel-2 Optical", "AIS", "AMSR2", "RADARSAT-1", "OSINT", "Multi-Sensor Fusion", "Explainable AI", "IEEE 7001", "Python"],
-          color: "#00b8d4",
-        },
-        {
           name: "5GCx Pilot AI Evaluation",
           category: "Pilot Readiness & HMI Evaluation",
           description:
@@ -353,22 +409,7 @@ const PROFESSIONAL: UniverseConfig = {
           technologies: ["Python", "Computer Vision", "Applied AI", "Sensor Fusion", "HMI Evaluation", "Pilot Readiness", "Defence Tech"],
           color: "#80f0ff",
           link: "https://5gcx.ai",
-        },
-        {
-          name: "AMMVER - Emerging Threat Forecasting",
-          category: "Explainable Forecasting / Defence AI",
-          description:
-            "Led engineering for Vimy's DND IDEaS Fast Forward project forecasting global emerging threats using a hybrid neural-network and hidden-Markov-model approach. Built and presented an explainable conflict-forecasting concept live to a technical and military review audience, tying public information, statistical modeling, and machine-learning forecasts into a decision-support workflow.",
-          technologies: [
-            "Hybrid neural networks",
-            "Hidden Markov models",
-            "Explainable AI",
-            "Conflict forecasting",
-            "DND IDEaS",
-            "Decision support",
-            "Policy-aware outputs",
-          ],
-          color: "#36d6ff",
+          images: ["/professional/5gcx-fighter.png"],
         },
         {
           name: "Drone Surge - Cardboard UAS Concept",
@@ -385,6 +426,7 @@ const PROFESSIONAL: UniverseConfig = {
             "interoperability",
           ],
           color: "#62e8ff",
+          images: ["/professional/drone-surge-uas-render.png"],
         },
         {
           name: "Vimy.ai - Public Web Presence",
@@ -403,39 +445,26 @@ const PROFESSIONAL: UniverseConfig = {
           ],
           color: "#8af4ff",
           link: "https://vimy.ai",
+          images: ["/professional/vimy-ai-website.png"],
         },
         {
-          name: "Product Demos & Architecture",
-          category: "Technical Productization",
+          name: "Demos, Architecture & Responsible AI",
+          category: "Productization & AI Governance",
           description:
-            "Translated Vimy research prototypes and proposal concepts into customer-facing demos and technical architectures across explainable AI, autonomy, and sensor-fusion programs. The throughline is making early technical work legible enough to evaluate, fund, and eventually ship.",
+            "The connective engineering at Vimy: translating research prototypes and proposal concepts into customer-facing demos and technical architectures across explainable AI, autonomy, and sensor-fusion programs — and the responsible-AI posture underneath them. IEEE 7001/7003 transparency and algorithmic-bias framing, ISO/IEC 42001 AI-management concepts, OpenLineage + PROV-O lineage capture, gitleaks scanning, and license-audit gates. The throughline is making early technical work both legible enough to evaluate and accountable enough to trust.",
           technologies: [
             "product demos",
             "technical architecture",
             "prototype hardening",
-            "customer-facing demos",
-            "reproducible environments",
             "Docker",
             "CI hygiene",
+            "IEEE 7001 / 7003",
+            "ISO/IEC 42001",
+            "OpenLineage + PROV-O",
+            "license audit",
           ],
           color: "#a0f8ff",
-        },
-        {
-          name: "AI Governance & Lineage",
-          category: "Responsible AI Infrastructure",
-          description:
-            "Built Vimy's engineering posture around explainable and auditable AI systems: IEEE 7001 transparency, IEEE 7003 algorithmic-bias framing, ISO/IEC 42001 AI-management concepts, OpenLineage + PROV-O lineage capture, gitleaks scanning, and license-audit/no-GPL gates. This is the part of AI work that makes models accountable instead of just impressive.",
-          technologies: [
-            "IEEE 7001",
-            "IEEE 7003",
-            "ISO/IEC 42001",
-            "OpenLineage",
-            "PROV-O",
-            "gitleaks",
-            "license audit",
-            "AI management systems",
-          ],
-          color: "#b6fbff",
+          images: ["/professional/vimy-poster.png"],
         },
       ],
     },
@@ -443,7 +472,7 @@ const PROFESSIONAL: UniverseConfig = {
       type: "pill",
       distance: 35,
       speed: 0.0038,
-      size: 1.05,
+      size: 1.3,
       phase: 2.8,
       tilt: -0.16,
       bump: 0,
@@ -472,9 +501,13 @@ const PROFESSIONAL: UniverseConfig = {
             "nutrition tracking",
           ],
           color: "#c8ff40",
+          images: [
+            "/professional/redline-stats.png",
+            "/professional/redline-home.png",
+          ],
         },
         {
-          name: "Reel_block · Reclaim Your Attention",
+          name: "Reel It In · Reclaim Your Attention",
           category: "Attention / Mobile",
           description:
             "Working Android Accessibility Service that detects when the user enters Instagram Reels from addictive app surfaces and gently routes them out, while preserving useful DM-shared reels. Built with minimal-permission posture and a foreground-service pattern so the OS does not silently kill it. The premise is simple: reduce the infinite-scroll trap without forcing total abstinence from the social app.",
@@ -488,6 +521,7 @@ const PROFESSIONAL: UniverseConfig = {
             "anti-doomscroll",
           ],
           color: "#a8e828",
+          images: ["/professional/reel-it-in-permissions.png"],
         },
         {
           name: "Lucid · Smart Wake (in design)",
@@ -569,6 +603,14 @@ const PERSONAL: UniverseConfig = {
           technologies: ["Spotify", "playlist", "euphoria", "always growing"],
           color: "#ff66cc",
           link: "https://open.spotify.com/playlist/2FQxHlFhPRnHfHnCC9uPF5",
+          sectionLabels: {
+            tech: "playlist notes",
+            link: "link to playlist",
+          },
+          sectionKickers: {
+            tech: "what it holds",
+            link: "Spotify",
+          },
         },
         {
           name: "SoundCloud",
@@ -578,6 +620,14 @@ const PERSONAL: UniverseConfig = {
           technologies: ["SoundCloud", "DJ sets", "continuous mixes"],
           color: "#ff80b8",
           link: "https://soundcloud.com/personesque-bobensque",
+          sectionLabels: {
+            tech: "sets / edits",
+            link: "listen on SoundCloud",
+          },
+          sectionKickers: {
+            tech: "where it lives",
+            link: "mixes and tracks",
+          },
           links: [
             {
               label: "Dopamine Kumo Mix",
@@ -618,6 +668,14 @@ const PERSONAL: UniverseConfig = {
           ],
           color: "#ff8fdd",
           link: "https://open.spotify.com/user/5xe060hdw181po4eo06pezsr2",
+          sectionLabels: {
+            tech: "current fav artists",
+            link: "Spotify profile",
+          },
+          sectionKickers: {
+            tech: "on rotation",
+            link: "where I listen",
+          },
         },
         {
           name: "Genre Atlas",
@@ -644,6 +702,12 @@ const PERSONAL: UniverseConfig = {
             "rage rap · uk drill",
           ],
           color: "#ffb0e8",
+          sectionLabels: {
+            tech: "genres",
+          },
+          sectionKickers: {
+            tech: "sounds I tune into",
+          },
         },
         {
           name: "What music means to me",
@@ -661,6 +725,14 @@ const PERSONAL: UniverseConfig = {
             "Raving · McKenzie Wark",
           ],
           color: "#ffd0f0",
+          sectionLabels: {
+            tech: "how it feels",
+          },
+          sectionKickers: {
+            tech: "the recurring thread",
+          },
+          techAsText:
+            "The throughline is connection: catching a vibe with someone, feeling frequency and resonance, DJing as a way to mix and morph emotion, and music as therapy, joy, euphoria, and release. Even raving sits there for me now: not just a scene, but a liminal place where I learned what I wanted, what I had outgrown, and what still made me feel alive.",
         },
       ],
     },
@@ -691,6 +763,12 @@ const PERSONAL: UniverseConfig = {
             "being good",
           ],
           color: "#a070ff",
+          sectionLabels: {
+            tech: "core tension",
+          },
+          sectionKickers: {
+            tech: "what keeps returning",
+          },
         },
         {
           name: "How I Frame It",
@@ -706,6 +784,12 @@ const PERSONAL: UniverseConfig = {
             "uncertainty",
           ],
           color: "#c0a0ff",
+          sectionLabels: {
+            tech: "frameworks",
+          },
+          sectionKickers: {
+            tech: "how I think with them",
+          },
         },
         {
           name: "Two-Pronged Mental Health",
@@ -720,6 +804,12 @@ const PERSONAL: UniverseConfig = {
             "bias awareness",
           ],
           color: "#a8b8ff",
+          sectionLabels: {
+            tech: "mental health model",
+          },
+          sectionKickers: {
+            tech: "body and inner work",
+          },
         },
         {
           name: "What I'm Building Toward",
@@ -734,6 +824,12 @@ const PERSONAL: UniverseConfig = {
             "attention vs connection",
           ],
           color: "#c8a0ff",
+          sectionLabels: {
+            tech: "mission",
+          },
+          sectionKickers: {
+            tech: "what I want tech to do",
+          },
         },
         {
           name: "What I Keep",
@@ -748,6 +844,12 @@ const PERSONAL: UniverseConfig = {
             "gentleness",
           ],
           color: "#b890ff",
+          sectionLabels: {
+            tech: "kept values",
+          },
+          sectionKickers: {
+            tech: "what survives the critique",
+          },
         },
       ],
     },
@@ -772,6 +874,14 @@ const PERSONAL: UniverseConfig = {
             "Nyx is the primordial Greek deity of night, daughter of Chaos. The name felt right immediately: small, dark, mysterious, and full of contained cosmic disorder. She is docile most of the time, but the night-creature energy is real.",
           technologies: ["Greek mythology", "primordial deity", "daughter of Chaos", "the night"],
           color: "#7a6abf",
+          sectionLabels: {
+            tech: "name roots",
+            images: "photos",
+          },
+          sectionKickers: {
+            tech: "mythology",
+            images: "first Nyx fragments",
+          },
           images: [
             "/nyx/image-1780562125160.webp",
             "/nyx/image-1780562057110.webp",
@@ -785,6 +895,13 @@ const PERSONAL: UniverseConfig = {
             "Belly-out lounging, long dramatic stretches, constant eating, green-eyed stares, tongue-out bleps, full loaf mode, and sudden suspicion if she smells another cat. The whole Nyx experience.",
           technologies: ["chaos", "blep", "loaf", "bite", "kitten"],
           color: "#b0b0b0",
+          hideTech: true,
+          sectionLabels: {
+            images: "photos",
+          },
+          sectionKickers: {
+            images: "the boss in pictures",
+          },
           images: [
             "/nyx/image-1780562099824.webp",
             "/nyx/image-1780562108138.webp",
@@ -815,6 +932,14 @@ const PERSONAL: UniverseConfig = {
           technologies: ["Letterboxd", "diary", "reviews", "lists"],
           color: "#ffaa55",
           link: "https://letterboxd.com/madirewolf/",
+          sectionLabels: {
+            tech: "what's there",
+            link: "open Letterboxd",
+          },
+          sectionKickers: {
+            tech: "watch diary",
+            link: "@madirewolf",
+          },
         },
         {
           name: "Favourite Directors",
@@ -829,6 +954,12 @@ const PERSONAL: UniverseConfig = {
             "Quentin Tarantino",
           ],
           color: "#ffd080",
+          sectionLabels: {
+            tech: "directors",
+          },
+          sectionKickers: {
+            tech: "whose work I return to",
+          },
         },
         {
           name: "The Vault",
@@ -862,6 +993,12 @@ const PERSONAL: UniverseConfig = {
             "Shutter Island",
           ],
           color: "#ffc080",
+          sectionLabels: {
+            tech: "films",
+          },
+          sectionKickers: {
+            tech: "the ones that stuck",
+          },
         },
         {
           name: "TV & Limited Series",
@@ -878,6 +1015,12 @@ const PERSONAL: UniverseConfig = {
             "Gumball",
           ],
           color: "#ffb060",
+          sectionLabels: {
+            tech: "shows",
+          },
+          sectionKickers: {
+            tech: "long-form worlds",
+          },
         },
         {
           name: "What film means to me",
@@ -896,6 +1039,14 @@ const PERSONAL: UniverseConfig = {
             "movies that move",
           ],
           color: "#ffe0a0",
+          sectionLabels: {
+            tech: "what I look for",
+          },
+          sectionKickers: {
+            tech: "why it stays with me",
+          },
+          techAsText:
+            "I look for communication under the plot: moral pressure, altered mental states, language shaping reality, spirituality, shock, empathy, and scenes that make the whole story rearrange itself in your head. The best films move first, then explain themselves later.",
         },
       ],
     },
@@ -924,19 +1075,42 @@ const PERSONAL: UniverseConfig = {
             "infinite stars",
             "tech as shielding",
           ],
+          images: [
+            "/nature/wadi-rum-sky.png",
+            "/nature/wadi-rum-tent.png",
+            "/nature/wadi-rum-lil-bro.png",
+          ],
           color: "#80e060",
         },
         {
           name: "Old Worlds: Petra, Dead Sea, Bosphorus, Levant",
           category: "Civilizational time",
           description:
-            "Petra, the Dead Sea, the olive fields of the Levant, the Bosphorus glistening under the sun. I love archaeology and ruins because they make me feel small inside history. They are beauty, mystery, proof that everything ends, and a way to touch the past. Every carved stone and old city feels like a reminder that entire worlds can vanish and still leave a shape behind.",
+            "Petra, the Dead Sea, and the Bosphorus glistening under the sun. I love archaeology and ruins because they make me feel small inside history. They are beauty, mystery, proof that everything ends, and a way to touch the past. Every carved stone and old city feels like a reminder that entire worlds can vanish and still leave a shape behind.",
           technologies: [
             "Petra",
             "Dead Sea",
             "Bosphorus",
             "Levant olives",
             "archaeology",
+          ],
+          notes: [
+            {
+              label: "Olive fields",
+              kicker: "family farm",
+              body:
+                "The olive fields I saw in the Levant were on my family's farm, next to their old swings. That memory feels different from Petra or the Bosphorus: less like a monument, more like inheritance, family, and a place that was quietly still there.",
+            },
+          ],
+          images: [
+            "/nature/petra.png",
+            "/nature/mount-nebo-view.png",
+            "/nature/mount-nebo-memorial-view.png",
+            "/nature/amman-roman-theater.png",
+            "/nature/amman-citadel-sister.png",
+            "/nature/amman-hercules-arch-me.png",
+            "/nature/hercules-statue-fields.png",
+            "/nature/petra-church-floor.png",
           ],
           color: "#a0ff80",
         },
@@ -953,6 +1127,7 @@ const PERSONAL: UniverseConfig = {
             "Jupiter",
             "Saturn",
           ],
+          images: ["/nature/kuwait-beach-me.png", "/nature/kuwait-waterline.png"],
           color: "#90e890",
         },
         {
@@ -966,6 +1141,20 @@ const PERSONAL: UniverseConfig = {
             "rain on the docks",
             "cottage hikes",
             "first time",
+          ],
+          images: [
+            "/nature/quebec-waterfall-reflection.png",
+            "/nature/quebec-waterfall-rocks.png",
+            "/nature/muskoka-marko.png",
+            "/nature/muskoka-sander.png",
+            "/nature/muskoka-camping-collage.png",
+            "/nature/ottawa-parliament-river.png",
+            "/nature/niagara-falls.png",
+            "/nature/toronto-islands-ryan-sahib.png",
+            "/nature/north-frontenac-cottage-nic.png",
+            "/nature/north-frontenac-canoe-gold.png",
+            "/nature/north-frontenac-canoe-sky.png",
+            "/nature/canada-forest.png",
           ],
           color: "#b0f8a0",
         },

@@ -874,6 +874,12 @@ export default function UIOverlay({
                       <div className="truncate text-sm font-bold leading-tight text-white">
                         {selected.name}
                       </div>
+                      <div
+                        className="mt-0.5 line-clamp-2 text-xs font-semibold leading-snug"
+                        style={{ color: "rgba(255,255,255,0.68)" }}
+                      >
+                        {selectedLandmark.name}
+                      </div>
                     </div>
                   </div>
 
@@ -937,6 +943,11 @@ export default function UIOverlay({
                   </div>
                   <div className="text-lg font-bold leading-tight tracking-tight text-white">
                     {selected.name}
+                  </div>
+                  <div
+                    className="mt-1 text-sm font-semibold leading-snug text-white/70"
+                  >
+                    {selectedLandmark.name}
                   </div>
                   <div
                     className="mt-1 text-[11px]"

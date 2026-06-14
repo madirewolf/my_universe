@@ -10,7 +10,7 @@ import type { ThreeEvent } from "@react-three/fiber"
 import type { Landmark, Universe } from "@/lib/constants"
 import { makeCrystalMoon } from "./planet"
 
-type CardKind = "title" | "desc" | "tech" | "link" | "images"
+type CardKind = "desc" | "tech" | "link" | "images" | "note"
 type MoonConcept =
   | "observatory"
   | "walk"
@@ -25,6 +25,7 @@ interface SectionData {
   label: string
   kicker: string
   body: string
+  display?: "chips" | "text"
 }
 
 interface MoonViewProps {
@@ -37,18 +38,18 @@ interface MoonViewProps {
 const CRYSTAL_RADIUS = 1.55
 const SECTION_LABELS: Record<Universe, Record<CardKind, string>> = {
   professional: {
-    title: "Brief",
     desc: "About",
     tech: "Stack",
     link: "Portal",
     images: "Gallery",
+    note: "Note",
   },
   personal: {
-    title: "Memory",
     desc: "Story",
-    tech: "Vibes",
-    link: "Portal",
+    tech: "Details",
+    link: "Link",
     images: "Evidence",
+    note: "Note",
   },
 }
 
@@ -126,38 +127,65 @@ function conceptForLandmark(landmark: Landmark, seed: number): MoonConcept {
   return FALLBACK_CONCEPTS[Math.abs(Math.round(seed)) % FALLBACK_CONCEPTS.length]
 }
 
+function isNatureLandmark(landmark: Landmark): boolean {
+  const key = `${landmark.name} ${landmark.category} ${landmark.technologies.join(" ")}`.toLowerCase()
+  return (
+    key.includes("wadi rum") ||
+    key.includes("petra") ||
+    key.includes("dead sea") ||
+    key.includes("persian gulf") ||
+    key.includes("kuwait") ||
+    key.includes("muskoka") ||
+    key.includes("backcountry") ||
+    key.includes("canoe") ||
+    key.includes("nature means")
+  )
+}
+
 // (The data crystal's geometry now comes from planet.tsx's makeCrystalMoon —
 // same recipe + same seed as the orbiting moon, so they're identical twins.)
 
 function makeSections(landmark: Landmark, universe: Universe): SectionData[] {
   const labels = SECTION_LABELS[universe]
-  const sections: SectionData[] = [
-    {
-      kind: "title",
-      label: labels.title,
-      kicker: landmark.category,
-      body: landmark.name,
-    },
-    {
-      kind: "desc",
-      label: labels.desc,
-      kicker: universe === "personal" ? "what it means" : "what it does",
-      body: landmark.description,
-    },
-    {
+  const natureMode = universe === "personal" && isNatureLandmark(landmark)
+  const sections: SectionData[] = []
+
+  sections.push({
+    kind: "desc",
+    label: natureMode ? "Memory" : landmark.sectionLabels?.story ?? labels.desc,
+    kicker: natureMode
+      ? landmark.category
+      : landmark.sectionKickers?.story ?? (universe === "personal" ? "what it means" : "what it does"),
+    body: landmark.description,
+  })
+
+  if (!natureMode && !landmark.hideTech && (landmark.technologies.length > 0 || landmark.techAsText)) {
+    sections.push({
       kind: "tech",
-      label: labels.tech,
-      kicker: universe === "personal" ? "texture / motifs" : "tools / systems",
-      body: landmark.technologies.join(" / "),
-    },
-  ]
+      label: landmark.sectionLabels?.tech ?? labels.tech,
+      kicker: landmark.sectionKickers?.tech ?? (universe === "personal" ? "details" : "tools / systems"),
+      body: landmark.techAsText ?? landmark.technologies.join(" / "),
+      display: landmark.techAsText ? "text" : "chips",
+    })
+  }
+
+  if (landmark.notes?.length) {
+    landmark.notes.forEach((note) => {
+      sections.push({
+        kind: "note",
+        label: note.label,
+        kicker: note.kicker ?? "field note",
+        body: note.body,
+      })
+    })
+  }
 
   if (landmark.link || landmark.links?.length) {
     const count = (landmark.link ? 1 : 0) + (landmark.links?.length ?? 0)
     sections.push({
       kind: "link",
-      label: labels.link,
-      kicker: count > 1 ? `${count} connected portals` : "connected portal",
+      label: landmark.sectionLabels?.link ?? labels.link,
+      kicker: landmark.sectionKickers?.link ?? (count > 1 ? `${count} links` : "external link"),
       body: count > 1 ? "Open one of the linked artifacts." : "Open the linked artifact.",
     })
   }
@@ -165,8 +193,8 @@ function makeSections(landmark: Landmark, universe: Universe): SectionData[] {
   if (landmark.images?.length) {
     sections.push({
       kind: "images",
-      label: labels.images,
-      kicker: `${landmark.images.length} visual artifact${landmark.images.length === 1 ? "" : "s"}`,
+      label: natureMode ? "Gallery" : landmark.sectionLabels?.images ?? labels.images,
+      kicker: landmark.sectionKickers?.images ?? `${landmark.images.length} visual artifact${landmark.images.length === 1 ? "" : "s"}`,
       body: "Browse the visual evidence attached to this moon.",
     })
   }
@@ -679,7 +707,7 @@ function SectionOrbitMenu({
 
           return (
             <button
-              key={section.kind}
+              key={`${section.kind}-${section.label}`}
               type="button"
               onClick={(event) => {
                 event.preventDefault()
@@ -932,7 +960,7 @@ function InfoDeck({
         position: "absolute",
         right: 28,
         top: 116,
-        width: 410,
+        width: 460,
         maxHeight: "calc(100vh - 210px)",
         pointerEvents: "auto",
       }
@@ -988,17 +1016,15 @@ function InfoDeck({
                   overflowY: "auto",
                   paddingRight: 4,
                   color: "rgba(255,255,255,0.82)",
-                  fontSize: isMobile ? 12 : 13,
-                  lineHeight: 1.55,
+                  fontSize: isMobile ? 14 : 16,
+                  lineHeight: 1.62,
                 }}
               >
-                {active.kind === "title" && (
-                  <div style={{ fontSize: isMobile ? 19 : 25, fontWeight: 850, lineHeight: 1.1 }}>{active.body}</div>
-                )}
+                {(active.kind === "desc" || active.kind === "note") && active.body}
 
-                {active.kind === "desc" && active.body}
+                {active.kind === "tech" && active.display === "text" && active.body}
 
-                {active.kind === "tech" && (
+                {active.kind === "tech" && active.display !== "text" && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {landmark.technologies.map((item) => (
                       <span
@@ -1227,7 +1253,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
         <ConceptSet concept={concept} color={landmark.color} seed={seed + hashString(landmark.name) * 0.0001} isMobile={isMobile} />
         {sections.map((section, index) => (
           <SectionBeacon
-            key={section.kind}
+            key={`${section.kind}-${section.label}`}
             concept={concept}
             position={positions[index]}
             active={index === activeIndex}
