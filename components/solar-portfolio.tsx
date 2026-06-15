@@ -98,11 +98,28 @@ const MODE_CUT = {
 // Object radii used to compute match-cut distances.
 const MOON_CRYSTAL_RADIUS = 1.55 // MoonView's central data crystal
 const MOON_ORBIT_RADIUS = 0.36 // crystal moons orbiting a detail planet
+// Moon→moon stepping dives CLOSER than the generic FILL_FACTOR. The crystal
+// is spiky, so a bare bounding-sphere fill (≈2.95) lets too much background
+// show through to ever read as "covering the screen". 2.1 makes the crystal
+// body overflow the 60° frame ~1.6× while staying just outside the displaced
+// spike envelope (~1.89), so the near plane never clips into it at the peak.
+const MOON_STEP_CUT_DIST = 2.1
 const CAMERA_FLIGHT = {
   SYSTEM: 1.75,
   SYSTEM_RETURN: 2.25,
   PLANET: 1.65,
   MOON: 1.35,
+  /**
+   * Attention leads, travel follows: the gaze pan recenters onto the
+   * destination within this fraction of the flight, then the dolly finishes
+   * the framing. Sharing one clock for gaze + dolly made the look-at LINGER
+   * on the departure target early in the move — on a planet dive from the
+   * overhead system view that means lingering on the near-straight-down
+   * orientation (look-dir ≈ camera-up, the one pose lookAt can't define),
+   * which read as jitter. Leading the gaze sweeps out of that zone fast and
+   * turns the flight into the clean recenter-pan it should be.
+   */
+  GAZE_LEAD: 0.6,
 } as const
 
 type CameraControlsRef = OrbitControlsImpl
@@ -501,10 +518,13 @@ function CameraController({
 
     const rawT = (state.clock.elapsedTime - flight.current.start) / flight.current.duration
     const k = easeInOutCubic(Math.min(rawT, 1))
-    // One clock for dolly + gaze. Split clocks and quaternion tricks were
-    // the hitch sources — keep it a single eased move.
+    // Gaze leads, dolly follows (GAZE_LEAD): the recenter-pan finishes early
+    // so the camera isn't still staring at the departure point while it
+    // travels — that lingering was the planet-flight jitter. up stays pinned
+    // (matrix lookAt) so roll never twists through the move.
+    const gazeK = easeInOutCubic(Math.min(rawT / CAMERA_FLIGHT.GAZE_LEAD, 1))
     camera.position.lerpVectors(flight.current.fromPos, flight.current.toPos, k)
-    _lookAt.lerpVectors(flight.current.fromLookAt, flight.current.toLookAt, k)
+    _lookAt.lerpVectors(flight.current.fromLookAt, flight.current.toLookAt, gazeK)
     syncCameraLookAt(camera, controls, _lookAt, flight.current.up)
 
     if (rawT >= 1) {
@@ -995,14 +1015,17 @@ export default function SolarPortfolio() {
       (currentIndex + direction + selected.landmarks.length) % selected.landmarks.length
     const next = selected.landmarks[nextIndex]
     // Dive through the data crystal, come out at the next moon's crystal.
+    // Closer cut (crystal fills the whole frame) and snappier than the
+    // generic mode-cut — cycling between moons should feel quick. cutDist
+    // and arriveDist stay equal so the match cut lands seamlessly.
     startModeCut({
       targetObj: null,
-      cutDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
-      arriveDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
+      cutDist: MOON_STEP_CUT_DIST,
+      arriveDist: MOON_STEP_CUT_DIST,
       settlePos: SETTLE_POS.moon(isMobile),
       destMode: "moon",
-      outDur: MODE_CUT.DIVE_OUT,
-      inDur: MODE_CUT.DIVE_IN,
+      outDur: 0.55,
+      inDur: 0.75,
       commit: () => {
         setSelectedLandmark(next)
         if (selectedPlanet !== null) replaceQuery(selectedPlanet, nextIndex)
@@ -1204,11 +1227,18 @@ export default function SolarPortfolio() {
             enableRotate={!(controlsMode === "moon" && isMobile)}
             enableDamping={!isTransitioning}
             dampingFactor={0.055}
-            minDistance={controlsMode === "system" ? 30 : controlsMode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
-            maxDistance={controlsMode === "system" ? 90 : controlsMode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
+            // During a flight the clamps go fully permissive (union of every
+            // mode) so OrbitControls.update()'s clamp can NEVER yank the camera
+            // mid-move. Without this, a planet→planet flight starts at ~10
+            // units while controlsMode resolves to "system" (min 30) — the
+            // first frame snapped the camera outward ("zoom out") before the
+            // lerp took over. The clamps snap back to the destination mode at
+            // handoff, where the camera already sits in range (no snap).
+            minDistance={isTransitioning ? (isMobile ? 5 : 3) : controlsMode === "system" ? 30 : controlsMode === "moon" ? (isMobile ? 9 : 4) : (isMobile ? 5 : 3)}
+            maxDistance={isTransitioning ? 90 : controlsMode === "system" ? 90 : controlsMode === "moon" ? (isMobile ? 26 : 16) : (isMobile ? 28 : 22)}
             autoRotate={controlsMode === "system" && !isTransitioning && !paused}
             autoRotateSpeed={0.1}
-            maxPolarAngle={controlsMode === "system" ? Math.PI / 2.2 : Math.PI}
+            maxPolarAngle={isTransitioning ? Math.PI : controlsMode === "system" ? Math.PI / 2.2 : Math.PI}
             minPolarAngle={0}
           />
         </Suspense>
