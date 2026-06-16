@@ -680,7 +680,7 @@ export default function UIOverlay({
             <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
               <div
                 className={cn(
-                  "font-sans font-bold tracking-tight mb-1",
+                  "font-display font-bold tracking-tight mb-1",
                   isMobile ? "text-xl" : "text-3xl",
                 )}
                 style={{
@@ -708,7 +708,7 @@ export default function UIOverlay({
               </div>
 
               <div
-                className="font-display font-medium text-sm"
+                className="font-sans font-medium text-sm"
                 style={{
                   color: "rgba(255,255,255,0.52)",
                   textShadow: "0 0 12px rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.22)",
@@ -756,7 +756,7 @@ export default function UIOverlay({
                 </div>
                 <div
                   className={cn(
-                    "font-bold text-white tracking-tight mb-1",
+                    "font-display font-bold text-white tracking-tight mb-1",
                     isMobile ? "text-lg" : "text-2xl",
                   )}
                 >
@@ -871,7 +871,7 @@ export default function UIOverlay({
                       >
                         Current Planet
                       </div>
-                      <div className="truncate text-sm font-bold leading-tight text-white">
+                      <div className="truncate font-display text-sm font-bold leading-tight text-white">
                         {selected.name}
                       </div>
                       <div
@@ -935,7 +935,7 @@ export default function UIOverlay({
                 </div>
               ) : (
                 <div className="flex items-center gap-3 px-5 py-3">
-                  <div className="min-w-0 flex-shrink text-lg font-bold leading-tight tracking-tight text-white">
+                  <div className="min-w-0 flex-shrink font-display text-lg font-bold leading-tight tracking-tight text-white">
                     {selected.name}
                   </div>
                   <div
@@ -1046,6 +1046,9 @@ export default function UIOverlay({
         className={cn(
           "absolute z-[120] flex pointer-events-auto",
           isMobile ? "bottom-3 right-3 gap-2" : "bottom-8 right-8 gap-3",
+          // Mobile moon view: the bottom sheet owns the bottom — hide these
+          // so they don't sit on top of the stitched panel list.
+          isMobile && mode === "moon" && "hidden",
         )}
       >
         <SocialLink href="https://www.instagram.com/limiliminal/" icon={Instagram} />
@@ -1057,6 +1060,7 @@ export default function UIOverlay({
         className={cn(
           "absolute z-[120] flex items-center pointer-events-auto",
           isMobile ? "bottom-3 left-3 gap-2" : "bottom-8 left-8 gap-3",
+          isMobile && mode === "moon" && "hidden",
         )}
       >
         <BackgroundMusic />

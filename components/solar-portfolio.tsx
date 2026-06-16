@@ -1223,7 +1223,14 @@ export default function SolarPortfolio() {
           <ShaderWarmer systemGroupRefs={systemGroupRefs} />
 
           {mode === "moon" && selectedLandmark && (
-            <MoonView landmark={selectedLandmark} seed={landmarkSeed} universe={universe} isMobile={isMobile} />
+            <MoonView
+              landmark={selectedLandmark}
+              seed={landmarkSeed}
+              universe={universe}
+              isMobile={isMobile}
+              onPrevMoon={handlePrevMoon}
+              onNextMoon={handleNextMoon}
+            />
           )}
 
           <OrbitControls

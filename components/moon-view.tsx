@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type TouchEvent as ReactTouchEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode, type TouchEvent as ReactTouchEvent } from "react"
 import { Html } from "@react-three/drei"
 import { useFrame } from "@react-three/fiber"
 import { ChevronLeft, ChevronRight } from "lucide-react"
@@ -33,6 +33,9 @@ interface MoonViewProps {
   seed: number
   universe: Universe
   isMobile?: boolean
+  /** Mobile: horizontal swipe on the moon steps to the prev/next moon. */
+  onPrevMoon?: () => void
+  onNextMoon?: () => void
 }
 
 const CRYSTAL_RADIUS = 1.55
@@ -1438,18 +1441,19 @@ function SectionHeader({
   )
 }
 
-function TextContent({ color, isMobile, section }: { color: string; isMobile: boolean; section: SectionData }) {
+function TextContent({ color, isMobile, section, flush = false }: { color: string; isMobile: boolean; section: SectionData; flush?: boolean }) {
   return (
     <>
       <SectionHeader color={color} isMobile={isMobile} section={section} />
       <div
         style={{
           minHeight: 0,
-          // Desktop: fill the auto-fitted panel and scroll inside it. Mobile
-          // keeps its viewport cap (bottom-sheet layout).
-          flex: isMobile ? undefined : 1,
-          maxHeight: isMobile ? "27vh" : undefined,
-          overflowY: "auto",
+          // flush (mobile sheet): no inner cap/scroll, the bubble flows full
+          // height and the SHEET scrolls. Desktop fills its auto-fit panel;
+          // plain mobile keeps a viewport cap.
+          flex: !isMobile && !flush ? 1 : undefined,
+          maxHeight: flush ? undefined : isMobile ? "27vh" : undefined,
+          overflowY: flush ? "visible" : "auto",
           paddingRight: 4,
           color: "rgba(255,255,255,0.84)",
           fontSize: isMobile ? 15 : 17,
@@ -1467,11 +1471,13 @@ function TagsContent({
   isMobile,
   landmark,
   section,
+  flush = false,
 }: {
   color: string
   isMobile: boolean
   landmark: Landmark
   section: SectionData
+  flush?: boolean
 }) {
   return (
     <>
@@ -1479,8 +1485,8 @@ function TagsContent({
       <div
         style={{
           minHeight: 0,
-          maxHeight: isMobile ? "12vh" : "22vh",
-          overflowY: "auto",
+          maxHeight: flush ? undefined : isMobile ? "12vh" : "22vh",
+          overflowY: flush ? "visible" : "auto",
           paddingRight: 4,
           color: "rgba(255,255,255,0.82)",
           fontSize: isMobile ? 13 : 15,
@@ -1749,12 +1755,137 @@ function miniButton(color: string): CSSProperties {
   }
 }
 
-export default function MoonView({ landmark, seed, universe, isMobile = false }: MoonViewProps) {
+// Mobile bottom-sheet: the moon owns the top of the screen; a peek of the
+// stitched panel list sits at the bottom. Swipe up to expand into the full
+// scrollable list of bubbles, swipe down (from the top) to collapse. The
+// horizontal swipe-to-step-moons gesture lives in MoonView's window handler.
+function MobileMoonSheet({
+  sections,
+  landmark,
+  universe,
+  expanded,
+  setExpanded,
+  scrollRef,
+}: {
+  sections: SectionData[]
+  landmark: Landmark
+  universe: Universe
+  expanded: boolean
+  setExpanded: (v: boolean) => void
+  scrollRef: MutableRefObject<HTMLDivElement | null>
+}) {
+  const color = landmark.color
+  const textSections = sections.filter((s) => s.kind === "desc" || s.kind === "note")
+  const tagSection = sections.find((s) => s.kind === "tech")
+  const gallerySection = sections.find((s) => s.kind === "images")
+  const linkSection = sections.find((s) => s.kind === "link")
+  const links = useMemo(() => {
+    const out: { label: string; url: string }[] = []
+    if (landmark.link) out.push({ label: universe === "professional" ? "View project" : "Open link", url: landmark.link })
+    if (landmark.links) out.push(...landmark.links)
+    return out
+  }, [landmark.link, landmark.links, universe])
+
+  return (
+    <Html fullscreen zIndexRange={[18, 0]} style={{ pointerEvents: "none" }}>
+      <style>{`@keyframes moon-ui-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <div
+        data-moon-sheet
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: "84vh",
+          transform: expanded ? "translateY(0)" : "translateY(48vh)",
+          transition: "transform 0.42s cubic-bezier(0.22, 1, 0.36, 1)",
+          display: "flex",
+          flexDirection: "column",
+          background: "linear-gradient(180deg, rgba(8,11,20,0.66), rgba(7,10,18,0.93))",
+          borderTop: `1px solid ${color}33`,
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          boxShadow: `0 -12px 44px rgba(0,0,0,0.5), 0 0 30px ${color}14`,
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          pointerEvents: "auto",
+          touchAction: "pan-y",
+          fontFamily: "var(--font-sans), system-ui, -apple-system, sans-serif",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          aria-label={expanded ? "Collapse details" : "Expand details"}
+          style={{
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            padding: "11px 0 9px",
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ width: 42, height: 4, borderRadius: 999, background: `${color}66` }} />
+          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(255,255,255,0.42)" }}>
+            {expanded ? "Swipe down to close" : "Swipe up for details"}
+          </span>
+        </button>
+
+        <div
+          ref={scrollRef}
+          data-moon-sheet-scroll
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: expanded ? "auto" : "hidden",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            padding: "2px 14px 26px",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {textSections.map((section) => (
+            <MoonPanel key={`${section.kind}-${section.label}`} color={color} isMobile>
+              <TextContent color={color} isMobile section={section} flush />
+            </MoonPanel>
+          ))}
+          {gallerySection && landmark.images?.length ? (
+            <MoonPanel color={color} isMobile>
+              <GalleryContent color={color} images={landmark.images} isMobile landmarkName={landmark.name} section={gallerySection} />
+            </MoonPanel>
+          ) : null}
+          {tagSection ? (
+            <MoonPanel color={color} isMobile>
+              <TagsContent color={color} isMobile landmark={landmark} section={tagSection} flush />
+            </MoonPanel>
+          ) : null}
+          {linkSection && links.length > 0 ? (
+            <MoonPanel color={color} isMobile>
+              <LinkContent color={color} isMobile links={links} section={linkSection} />
+            </MoonPanel>
+          ) : null}
+        </div>
+      </div>
+    </Html>
+  )
+}
+
+export default function MoonView({ landmark, seed, universe, isMobile = false, onPrevMoon, onNextMoon }: MoonViewProps) {
   const concept = useMemo(() => conceptForLandmark(landmark, seed), [landmark, seed])
   const sections = useMemo(() => makeSections(landmark, universe), [landmark, universe])
   const textSections = useMemo(() => sections.filter((section) => section.kind === "desc" || section.kind === "note"), [sections])
   const orbitSections = textSections.length > 1 ? textSections : []
   const [activeIndex, setActiveIndex] = useState(0)
+  // Mobile bottom-sheet: collapsed = moon dominant + peek; expanded = full
+  // stitched list of panels.
+  const [sheetExpanded, setSheetExpanded] = useState(false)
+  const sheetScrollRef = useRef<HTMLDivElement>(null)
   const [menuVisible, setMenuVisible] = useState(isMobile)
   const hideMenuRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const positions = useMemo(() => sectionPositions(concept, orbitSections.length, isMobile), [concept, isMobile, orbitSections.length])
@@ -1778,31 +1909,35 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
 
   useEffect(() => {
     setActiveIndex(0)
+    setSheetExpanded(false)
+    if (sheetScrollRef.current) sheetScrollRef.current.scrollTop = 0
   }, [landmark.name, orbitSections.length])
 
-  // Mobile: vertical swipe steps through the sections (swipe up = next,
-  // swipe down = previous) — more intuitive than aiming at the orbit menu.
-  // Swipes that start inside the scrollable info panel keep native scrolling
-  // (it carries data-moon-swipe-ignore). One-finger rotate is disabled for
-  // the mobile moon view in solar-portfolio.tsx so swipes don't fight the
-  // camera.
+  // Mobile gestures (single source of truth — the sheet itself uses native
+  // scroll, the moon area is otherwise inert since one-finger rotate is off):
+  //   • swipe ↑  → expand the bottom sheet (reveal the stitched panel list)
+  //   • swipe ↓  → collapse back to the moon (only when the sheet is already
+  //               scrolled to its top, so it never fights content scrolling)
+  //   • swipe ←  → previous moon  •  swipe → → next moon
   useEffect(() => {
     if (!isMobile) return
-    if (textSections.length <= 1) return
 
     let startX = 0
     let startY = 0
     let startTime = 0
+    let startScroll = 0
+    let startedInScroll = false
     let tracking = false
 
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) return
-      const target = event.target as Element | null
-      if (target?.closest?.("[data-moon-swipe-ignore]")) return
       tracking = true
       startX = event.touches[0].clientX
       startY = event.touches[0].clientY
       startTime = performance.now()
+      startScroll = sheetScrollRef.current?.scrollTop ?? 0
+      const target = event.target as Element | null
+      startedInScroll = Boolean(target?.closest?.("[data-moon-sheet-scroll]"))
     }
 
     const onTouchEnd = (event: TouchEvent) => {
@@ -1813,13 +1948,27 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
       const dx = touch.clientX - startX
       const dy = touch.clientY - startY
       const elapsed = performance.now() - startTime
-      // Quick, predominantly-vertical flicks only.
-      if (elapsed > 650) return
-      if (Math.abs(dy) < 56 || Math.abs(dy) < Math.abs(dx) * 1.4) return
-      const step = dy < 0 ? 1 : -1
-      setActiveIndex((index) =>
-        Math.min(textSections.length - 1, Math.max(0, index + step)),
-      )
+      if (elapsed > 700) return
+      const absX = Math.abs(dx)
+      const absY = Math.abs(dy)
+
+      // Horizontal → step moons.
+      if (absX > 60 && absX > absY * 1.3) {
+        if (dx < 0) onPrevMoon?.()
+        else onNextMoon?.()
+        return
+      }
+
+      // Vertical → open / close the sheet.
+      if (absY > 52 && absY > absX * 1.3) {
+        if (dy < 0) {
+          if (!sheetExpanded) setSheetExpanded(true)
+        } else {
+          // Collapse only on a downward flick from the top of the content,
+          // so mid-scroll down-swipes don't yank the sheet shut.
+          if (sheetExpanded && (!startedInScroll || startScroll <= 2)) setSheetExpanded(false)
+        }
+      }
     }
 
     window.addEventListener("touchstart", onTouchStart, { passive: true })
@@ -1828,7 +1977,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
       window.removeEventListener("touchstart", onTouchStart)
       window.removeEventListener("touchend", onTouchEnd)
     }
-  }, [isMobile, textSections.length])
+  }, [isMobile, sheetExpanded, onPrevMoon, onNextMoon])
 
   useEffect(() => {
     setMenuVisible(isMobile)
@@ -1883,14 +2032,25 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
           onMenuLeave={scheduleHideMenu}
         />
       )}
-      <InfoDeck
-        concept={concept}
-        sections={sections}
-        activeIndex={activeIndex}
-        landmark={landmark}
-        universe={universe}
-        isMobile={isMobile}
-      />
+      {isMobile ? (
+        <MobileMoonSheet
+          sections={sections}
+          landmark={landmark}
+          universe={universe}
+          expanded={sheetExpanded}
+          setExpanded={setSheetExpanded}
+          scrollRef={sheetScrollRef}
+        />
+      ) : (
+        <InfoDeck
+          concept={concept}
+          sections={sections}
+          activeIndex={activeIndex}
+          landmark={landmark}
+          universe={universe}
+          isMobile={isMobile}
+        />
+      )}
 
       <ambientLight intensity={0.28} />
       <directionalLight position={[8, 8, 5]} intensity={0.9} />
