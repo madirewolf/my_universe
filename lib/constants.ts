@@ -103,7 +103,7 @@ const PROFESSIONAL: UniverseConfig = {
       phase: 0.2,
       tilt: 0.05,
       bump: 0.04,
-      name: "Graphics Planet",
+      name: "Graphics",
       description: "Computer Graphics & Visual Computing",
       color: "#ff0080",
       tags: ["C/C++", "GPU", "Rendering", "Generative AI"],
@@ -159,7 +159,7 @@ const PROFESSIONAL: UniverseConfig = {
       phase: 1.8,
       tilt: -0.08,
       bump: 0.09,
-      name: "Algorithms Planet",
+      name: "Algorithms",
       description: "Data Structures, Algorithms & Optimization",
       color: "#00d470",
       tags: ["C++", "Graphs", "Pathfinding", "Optimization"],
@@ -210,14 +210,14 @@ const PROFESSIONAL: UniverseConfig = {
       tilt: 0.12,
       bump: 0.03,
       shape: "torusKnot",
-      name: "Controls & Perception Planet",
+      name: "Controls & Perception",
       description: "Robotics perception, simulation, motion planning, and control systems",
       color: "#4080ff",
       tags: ["ROS", "Perception", "SLAM", "NMPC", "Simulation"],
       landmarks: [
         {
-          name: "Autonomous Helicopter Replanning (Capstone)",
-          category: "Robotics, Perception & Control",
+          name: "Autonomous Helicopter",
+          category: "Robotics, Perception & Control (Capstone)",
           description:
             "Year-long ECE496Y1 capstone restoring and extending an autonomous Bell-412 flight stack in high-fidelity simulation. Owned the perception and simulation/visualization workflow, online trajectory replanning, and secondary controls work: obstacles introduced in Gazebo became OpenCV/YOLO detections, detections became planner constraints, and the stack recomputed dynamically feasible trajectories tied back into SLAM state and NMPC tracking. Demonstrated waypoint cruise, obstacle replan, and safe landing end-to-end in a ~25,500 LoC C++ ROS/Gazebo system.",
           technologies: [
@@ -279,13 +279,13 @@ const PROFESSIONAL: UniverseConfig = {
       tilt: -0.12,
       bump: 0.04,
       shape: "dodecahedron",
-      name: "Applied AI & Agentic Systems Planet",
+      name: "Applied AI & Agentic Systems",
       description: "RAG pipelines, ranking systems, LLM workflows, and decision automation",
       color: "#8b5cff",
       tags: ["Python", "RAG", "LLMs", "pgvector", "Automation"],
       landmarks: [
         {
-          name: "JobFinder - Job Discovery Pipeline",
+          name: "JobFinder",
           category: "Applied AI / RAG Product",
           description:
             "Sole-built job-discovery and application pipeline that ingests live postings, ranks them against an embedded resume/profile corpus, and drafts tailored application material. The system moves from regex pre-filtering to local Ollama embeddings, Claude Haiku triage, Claude Sonnet drafting, and pgvector-backed retrieval over a structured personal profile. It has async ingestion, migrations, structured logging, cost tracking, and a FastAPI + HTMX tracker UI around the model layer.",
@@ -308,8 +308,8 @@ const PROFESSIONAL: UniverseConfig = {
           color: "#8b5cff",
         },
         {
-          name: "IBKR Auto-Trader Manager",
-          category: "Decision Systems / Live Risk",
+          name: "IBKR Auto-Trader",
+          category: "Decision Systems",
           description:
             "Live-money multi-strategy runner against Interactive Brokers ForecastEx using ib_async, with a hard daily loss circuit-breaker and an 8-point trade-approval gate before any prospective entry. The interesting part is not finance as an aesthetic; it is automation under real risk, where ranking, approval logic, scheduling, ledgering, and shutdown behavior all have consequences.",
           technologies: [
@@ -330,7 +330,7 @@ const PROFESSIONAL: UniverseConfig = {
           ],
         },
         {
-          name: "AMMVER - Emerging Threat Forecasting",
+          name: "AMMVER",
           category: "Explainable Forecasting / Defence AI",
           description:
             "Led engineering for Vimy's DND IDEaS Fast Forward project forecasting global emerging threats using a hybrid neural-network and hidden-Markov-model approach. Built and presented an explainable conflict-forecasting concept live to a technical and military review audience, tying public information, statistical modeling, and machine-learning forecasts into a decision-support workflow.",
@@ -396,7 +396,7 @@ const PROFESSIONAL: UniverseConfig = {
       phase: 0.7,
       tilt: 0.18,
       bump: 0.06,
-      name: "Vimy Systems Planet",
+      name: "Vimy Systems",
       description: "Vimy deep-tech work across autonomy, defence AI, sensor fusion, and product demos",
       color: "#00e0ff",
       tags: ["Vimy", "Autonomy", "Defence AI", "Sensor Fusion", "Demos"],
@@ -538,21 +538,6 @@ const PROFESSIONAL: UniverseConfig = {
           color: "#88e060",
         },
         {
-          name: "MyDrumpad",
-          category: "Music / Mobile",
-          description:
-            "Kotlin Android drum and loop pad built with a SoundPool audio engine, BPM control, and loop playback. Smaller than the other systems, but it connects the music side to the engineering side directly: touch, timing, rhythm, and software as instrument.",
-          technologies: [
-            "Kotlin",
-            "Android",
-            "SoundPool",
-            "BPM control",
-            "loop playback",
-            "mobile audio",
-          ],
-          color: "#b8f050",
-        },
-        {
           name: "What I'm Hacking",
           category: "Thesis",
           description:
@@ -578,7 +563,7 @@ const PROFESSIONAL: UniverseConfig = {
 const PERSONAL: UniverseConfig = {
   label: "Inner Universe",
   eyebrow: "Off the clock",
-  glitchSubtitle: "soft little world",
+  glitchSubtitle: "\\\\_†_// -=- <<-O->> .*.*-.-*-.-**-.-*-.-*-.-*.*. <<-O->>-=-",
   sunVariant: "nebula",
   backgroundVariant: "bright",
   planets: [
@@ -597,14 +582,15 @@ const PERSONAL: UniverseConfig = {
       landmarks: [
         {
           name: "euphoriphilia",
-          category: "Playlist",
+          category: "My Main Playlist",
           description:
             "My main playlist, named around the love of euphoria. Not just happiness in the simple sense, but that shared, overflowing feeling where your first instinct is to give it to someone else. It lives somewhere between bliss, melancholy, chaos, release, and the small utopian hope that joy is supposed to be shared.",
-          technologies: ["Spotify", "playlist", "euphoria", "always growing"],
+          technologies: [],
           color: "#ff66cc",
           link: "https://open.spotify.com/playlist/2FQxHlFhPRnHfHnCC9uPF5",
           sectionLabels: {
             tech: "playlist notes",
+            story: "EUPHORIPHILIA",
             link: "link to playlist",
           },
           sectionKickers: {
@@ -614,15 +600,16 @@ const PERSONAL: UniverseConfig = {
         },
         {
           name: "SoundCloud",
-          category: "DJ sets & edits",
+          category: "DJ sets & edits :)",
           description:
-            "Where the longer, looser experiments live. Mixing, DJing, and producing feel like capturing a feeling while it is still moving: bliss, therapy, dissociation, harmony. The technical side matters too, waves and frequencies and patterns, but it does not kill the magic. It makes the magic stranger. A few sets I'm proud of:",
-          technologies: ["SoundCloud", "DJ sets", "continuous mixes"],
+            "Where the longer, looser experiments live. Mixing, DJing, and producing feel like capturing a feeling while it is still moving. I have yet to record a set im truly proud of, but my soundcloud has some fun experiments :))",
+          technologies: [],
           color: "#ff80b8",
           link: "https://soundcloud.com/personesque-bobensque",
           sectionLabels: {
             tech: "sets / edits",
             link: "listen on SoundCloud",
+            story: "My SoundCloud Experiments",
           },
           sectionKickers: {
             tech: "where it lives",
@@ -671,6 +658,7 @@ const PERSONAL: UniverseConfig = {
           sectionLabels: {
             tech: "current fav artists",
             link: "Spotify profile",
+            story: "Who I'm listening to right now"
           },
           sectionKickers: {
             tech: "on rotation",
@@ -704,6 +692,7 @@ const PERSONAL: UniverseConfig = {
           color: "#ffb0e8",
           sectionLabels: {
             tech: "genres",
+            story: "Fav Genres"
           },
           sectionKickers: {
             tech: "sounds I tune into",
@@ -727,9 +716,10 @@ const PERSONAL: UniverseConfig = {
           color: "#ffd0f0",
           sectionLabels: {
             tech: "how it feels",
+            story: "My Music Journey"
           },
           sectionKickers: {
-            tech: "the recurring thread",
+            tech: "",
           },
           techAsText:
             "The throughline is connection: catching a vibe with someone, feeling frequency and resonance, DJing as a way to mix and morph emotion, and music as therapy, joy, euphoria, and release. Even raving sits there for me now: not just a scene, but a liminal place where I learned what I wanted, what I had outgrown, and what still made me feel alive.",
@@ -754,13 +744,8 @@ const PERSONAL: UniverseConfig = {
           name: "The Question Underneath",
           category: "What I keep coming back to",
           description:
-            "This planet is where I try to explain the question under almost everything I care about: how do I balance the animal part of me that wants happiness, food, touch, pleasure, play, and comfort with the conscious part that wants to fix everything, put people together, and be good? There is no final answer. It changes by person, moment, body, context, and stage of life. The only certainty is how uncertain things are.",
+            "This planet is where I try and give you some insight into how my mind works. Well to be frank, this whole project kind of is just that! I feel like the question I keep going back to, that is under almost everything I care about: how do I balance the animal part of me that wants happiness, food, touch, pleasure, play, and comfort with the conscious part in me that wants to bigger things? There is no final answer. It changes by person, moment, body, context, and stage of life. The only certainty is how uncertain things are. Building that intuition to figure out when to listen to yourself as opposed to when to force yourself through is very difficult and an ever-evolving problem",
           technologies: [
-            "animal self",
-            "conscious self",
-            "uncertainty",
-            "balance",
-            "being good",
           ],
           color: "#a070ff",
           sectionLabels: {
@@ -771,37 +756,11 @@ const PERSONAL: UniverseConfig = {
           },
         },
         {
-          name: "How I Frame It",
-          category: "Operating principles",
-          description:
-            "I used to get more attached to feeling like I had found the truth. Now I am more accepting that I probably have not. Everything is circular, everything is a spectrum, and that does not make frameworks useless. It makes them more important, because patterns are all we have when clean answers disappear. Order does not mean hierarchy to me. Things can unfold chronologically without becoming morally superior to what came before.",
-          technologies: [
-            "spectrum thinking",
-            "spiral dynamics",
-            "pendulum theory",
-            "order, not hierarchy",
-            "circular change",
-            "uncertainty",
-          ],
-          color: "#c0a0ff",
-          sectionLabels: {
-            tech: "frameworks",
-          },
-          sectionKickers: {
-            tech: "how I think with them",
-          },
-        },
-        {
-          name: "Two-Pronged Mental Health",
+          name: "Mental Health",
           category: "Where I land hardest",
           description:
-            "Mental health is double pronged. It is not just the phone, but it is also not just your nihilistic thoughts. If you wreck your body with bad sleep, disordered eating, no movement, burnout workouts, drugs, or self-medication, mindfulness alone cannot carry you. If you optimize the body but never do the inner work, you are still stuck. Get the neurochemistry right so the brain is not fighting an uphill battle, then do the spiritual work: meditation, self-knowledge, first-principles morality, and bias awareness.",
+            "Mental health is double pronged. It is not just the phone, but it is also not just your nihilistic thoughts. If you wreck your body with bad sleep, disordered eating, no movement, burnout workouts, drugs, or self-medication, mindfulness alone cannot carry you.",
           technologies: [
-            "neurochemistry",
-            "spiritual work",
-            "balance",
-            "first principles morality",
-            "bias awareness",
           ],
           color: "#a8b8ff",
           sectionLabels: {
@@ -810,6 +769,14 @@ const PERSONAL: UniverseConfig = {
           sectionKickers: {
             tech: "body and inner work",
           },
+          notes: [
+            {
+              label: "",
+              kicker: "",
+              body:
+                "If you optimize the body but never do the inner work, you are still stuck. Get the neurochemistry right so the brain is not fighting an uphill battle, then do the spiritual work: meditation, self-knowledge, first-principles morality, and bias awareness. My dream is to help people eat better quality foods, and get more complete supplements that aren't snake oil salesmen.",
+            },
+          ],
         },
         {
           name: "What I'm Building Toward",
@@ -817,39 +784,23 @@ const PERSONAL: UniverseConfig = {
           description:
             "A lot of why I went into computer engineering is here. I am fascinated by tech because it can either extract attention from people or help them find each other. Social media feels broken because it was optimized to retain attention, not create connection. It amplifies fake highlights, anxiety, comparison, rage, misinformation, and shallow interaction. I want to make social media social again: real community, shared interests, friendship, knowledge access, and technology that removes the mundane so people can actually see each other.",
           technologies: [
-            "bridge humans",
-            "social media to social",
-            "real community",
-            "knowledge accessibility",
-            "attention vs connection",
           ],
           color: "#c8a0ff",
           sectionLabels: {
             tech: "mission",
+            story: "My Dream for Tech"
           },
           sectionKickers: {
             tech: "what I want tech to do",
           },
-        },
-        {
-          name: "What I Keep",
-          category: "Spirituality without inherited cruelty",
-          description:
-            "I reject traditionalism when it means clinging to old things only because they are old, but I understand why humans preserve old patterns. Sometimes it slows down the loss of things that still work. From religion and spirituality, I keep meditation, group meditation, kindness, ego dissolution, charity, cleanliness, purity of soul, solidarity, gentleness toward the innocent and weak, and hating the action without hating the person. I reject the inherited cruelty: sexism, racism, slavery, and anything that asks people to worship harm just because it is old.",
-          technologies: [
-            "meditation",
-            "ego dissolution",
-            "charity",
-            "solidarity",
-            "gentleness",
+          notes: [
+            {
+              label: "Tradition vs. Progress",
+              kicker: "",
+              body:
+                "I reject traditionalism when it means clinging to old things only because they are old, but I understand why humans preserve old patterns. Sometimes it slows down the loss of things that still work. From religion and spirituality, I keep meditation, group meditation, kindness, ego dissolution, charity, cleanliness, purity of soul, solidarity, gentleness toward the innocent and weak, and hating the action without hating the person. I reject the inherited cruelty: sexism, racism, slavery, and anything that asks people to worship harm just because it is old.",
+            },
           ],
-          color: "#b890ff",
-          sectionLabels: {
-            tech: "kept values",
-          },
-          sectionKickers: {
-            tech: "what survives the critique",
-          },
         },
       ],
     },
@@ -863,7 +814,7 @@ const PERSONAL: UniverseConfig = {
       bump: 0.04,
       shape: "sphere",
       name: "Nyx",
-      description: "My small chaotic night creature. Docile, dramatic, and somehow in charge.",
+      description: "My small chaotic night creature. Docile, dramatic, yet somehow in charge.",
       color: "#1a1a22",
       tags: ["Cat", "Chaos", "Night", "Boss"],
       landmarks: [
@@ -872,7 +823,7 @@ const PERSONAL: UniverseConfig = {
           category: "Origin",
           description:
             "Nyx is the primordial Greek deity of night, daughter of Chaos. The name felt right immediately: small, dark, mysterious, and full of contained cosmic disorder. She is docile most of the time, but the night-creature energy is real.",
-          technologies: ["Greek mythology", "primordial deity", "daughter of Chaos", "the night"],
+          technologies: [],
           color: "#7a6abf",
           sectionLabels: {
             tech: "name roots",
@@ -928,13 +879,14 @@ const PERSONAL: UniverseConfig = {
           name: "Letterboxd · @madirewolf",
           category: "Watch diary",
           description:
-            "Where I log what I am working through: ratings, reviews, lists, rewatches, and whatever recently caught me off guard. The diary is less about completionism and more about leaving a trail of what I was thinking about when I watched it.",
-          technologies: ["Letterboxd", "diary", "reviews", "lists"],
+            "Where I log what I am working through: ratings, reviews, lists, rewatches, and whatever recently caught me off guard. This diary is far from complete!.",
+          technologies: [],
           color: "#ffaa55",
           link: "https://letterboxd.com/madirewolf/",
           sectionLabels: {
             tech: "what's there",
             link: "open Letterboxd",
+            story: "Letterboxd"
           },
           sectionKickers: {
             tech: "watch diary",
@@ -945,7 +897,7 @@ const PERSONAL: UniverseConfig = {
           name: "Favourite Directors",
           category: "Whose work I keep coming back to",
           description:
-            "Directors I keep returning to because their films feel built from a worldview, not just a plot. Nolan for structure and moral pressure, Villeneuve for scale and dread, Anderson for constructed tenderness, Tarkovsky for spiritual time, Tarantino for style and tension.",
+            "I find tracking directors delivers very consistently! Directors I keep returning to because their films feel built from a worldview, not just a plot. Nolan for structure and moral pressure, Villeneuve for scale and dread, Anderson for constructed tenderness, Tarkovsky for spiritual time, Tarantino for style and tension.",
           technologies: [
             "Christopher Nolan",
             "Denis Villeneuve",
@@ -955,6 +907,7 @@ const PERSONAL: UniverseConfig = {
           ],
           color: "#ffd080",
           sectionLabels: {
+            story: "Favourite directors",
             tech: "directors",
           },
           sectionKickers: {
@@ -962,10 +915,10 @@ const PERSONAL: UniverseConfig = {
           },
         },
         {
-          name: "The Vault",
+          name: "The Classics",
           category: "Films that stuck",
           description:
-            "The films that stay with me usually have a scene where the floor drops out: Fight Club, Incendies, Memento, Prisoners, A Beautiful Mind, Shutter Island. I like twists when they are not cheap shock, but a new way of understanding the whole story. The best scenes feel like two people, or two versions of one person, acting out a much deeper philosophy.",
+            "The films that stay with me usually have a scene where the floor drops out: Fight Club, Incendies, Memento, Prisoners, A Beautiful Mind, Shutter Island. I like twists when they are not cheap shock, but a new way of understanding the whole story. The best scenes feel like two people, or two versions of one person, acting out a much deeper philosophy, the White Lotus is a show that illustrates that really well!",
           technologies: [
             "Fight Club",
             "Whiplash",
@@ -994,17 +947,18 @@ const PERSONAL: UniverseConfig = {
           ],
           color: "#ffc080",
           sectionLabels: {
-            tech: "films",
+            tech: "Fav films",
+            story: "Favourite Films"
           },
           sectionKickers: {
-            tech: "the ones that stuck",
+            tech: "",
           },
         },
         {
           name: "TV & Limited Series",
-          category: "Long-form storytelling",
+          category: "fav shows",
           description:
-            "Different formats hold different parts of me. Game of Thrones for world-building and collapse. Daredevil for moral grit. Adventure Time and Gumball for the cartoon worlds that shaped my younger brain. Tokyo Ghoul for that darker anime register. Sherlock and Chernobyl for proof that a limited series can hit with the force of film.",
+            "Different formats hold different parts of me. I loved Game of Thrones for how unpredictable it was (till the last two seasons), as well as its beautiful dialogue, and explorations of morality. Daredevil for the raw dark feel. Adventure Time and Gumball were the cartoon worlds that shaped my younger brain. Tokyo Ghoul for the intense darkness. Sherlock and Chernobyl for proof that a limited series can hit with the force of film.",
           technologies: [
             "Sherlock (BBC miniseries)",
             "Chernobyl (HBO)",
@@ -1017,9 +971,10 @@ const PERSONAL: UniverseConfig = {
           color: "#ffb060",
           sectionLabels: {
             tech: "shows",
+            story: "Favourite shows",
           },
           sectionKickers: {
-            tech: "long-form worlds",
+            tech: "",
           },
         },
         {
@@ -1041,9 +996,10 @@ const PERSONAL: UniverseConfig = {
           color: "#ffe0a0",
           sectionLabels: {
             tech: "what I look for",
+            story: "What media means to me"
           },
           sectionKickers: {
-            tech: "why it stays with me",
+            tech: "",
           },
           techAsText:
             "I look for communication under the plot: moral pressure, altered mental states, language shaping reality, spirituality, shock, empathy, and scenes that make the whole story rearrange itself in your head. The best films move first, then explain themselves later.",
@@ -1059,21 +1015,16 @@ const PERSONAL: UniverseConfig = {
       tilt: 0.06,
       bump: 0.13,
       name: "Nature",
-      description: "Vastness, survival, ruins, and the moments that make me feel fully alive.",
+      description: "Vastness, survival, ruins. Moments that make my feel fully present.",
       color: "#80e060",
       tags: ["Stargazing", "Ruins", "Desert", "Wilderness"],
       landmarks: [
         {
-          name: "Wadi Rum, Stars I Couldn't See Before",
+          name: "A Sky Full of Stars",
           category: "Jordan",
           description:
-            "Around 1 AM in Wadi Rum, I was lying on the red sand with my family, looking at stars I did not know a naked eye could see. It looked like something only a professional long-exposure camera could capture, but it was just there above us. Falling stars kept cutting across the sky every few seconds or minutes. I felt blissful, euphoric, and completely mind-blown by how much had always been there, hidden by light.",
+            "Past midnight in Wadi Rum, I was lying on the red sand with my family, looking at stars I did not know a naked eye could see. It looked like something only a professional long-exposure camera could capture, but it was just there above us. Falling stars kept cutting across the sky every few seconds or minutes. I felt blissful, euphoric, and completely mind-blown by how much had always been there, hidden by light. I realized our technological impact on our environment was quite literally impeding our vision.",
           technologies: [
-            "Wadi Rum",
-            "Jordan",
-            "no light pollution",
-            "infinite stars",
-            "tech as shielding",
           ],
           images: [
             "/nature/wadi-rum-sky.png",
@@ -1083,23 +1034,18 @@ const PERSONAL: UniverseConfig = {
           color: "#80e060",
         },
         {
-          name: "Old Worlds: Petra, Dead Sea, Bosphorus, Levant",
-          category: "Civilizational time",
+          name: "Civilizations of Old",
+          category: "Petra, Romans, Dead Sea, Bosphorus",
           description:
-            "Petra, the Dead Sea, and the Bosphorus glistening under the sun. I love archaeology and ruins because they make me feel small inside history. They are beauty, mystery, proof that everything ends, and a way to touch the past. Every carved stone and old city feels like a reminder that entire worlds can vanish and still leave a shape behind.",
+            "I love archaeology and ruins because they make me feel small inside history. They are beauty, mystery, proof that everything ends, and a way to touch the past. Every carved stone and old city feels like a reminder that entire worlds can vanish and still leave a shape behind. I have been lucky to see some of the most stunning ruins in the world: Petra, Roman Theaters, the Bosphorus, the beautiful mosques of Istanbul, the Hagia Sophia, the Levant olive fields, the Dead Sea, and many more.",
           technologies: [
-            "Petra",
-            "Dead Sea",
-            "Bosphorus",
-            "Levant olives",
-            "archaeology",
           ],
           notes: [
             {
               label: "Olive fields",
-              kicker: "family farm",
+              kicker: "Family farm in Jordan",
               body:
-                "The olive fields I saw in the Levant were on my family's farm, next to their old swings. That memory feels different from Petra or the Bosphorus: less like a monument, more like inheritance, family, and a place that was quietly still there.",
+                "The olive fields I saw in the Levant were on my family's farm, next to their old swings. That memory feels different from Petra or the Bosphorus: less like a monument, more like inheritance. The olive fields felt like a reminder of my Palestinian roots, the land that my family came from, and the fact that I carry that history with me even if I have not lived there.",
             },
           ],
           images: [
@@ -1115,17 +1061,11 @@ const PERSONAL: UniverseConfig = {
           color: "#a0ff80",
         },
         {
-          name: "Home: Persian Gulf, Kuwaiti Desert",
-          category: "Childhood vastness",
+          name: "Home",
+          category: "Kuwait",
           description:
-            "Kuwait nature is harsh, lonely, solemn, melancholic, and still beautiful. I grew up a few minutes from the Persian Gulf, with the beach always nearby, and the desert becomes beautiful in winter: BBQs, infinite sand, ATVing, and telescope nights looking for Jupiter and Saturn. It also carries survival for me: heat, scarcity, mud shacks, refugee journeys, my grandfather arriving by boat, and the strange fact that people survive anyway.",
+            "Kuwait nature is harsh, melancholic, but still beautiful. I grew up a few minutes from the Persian Gulf, with the beach always close. The desert was my favourite part though. It becomes so beautiful in the winter: BBQs, infinite sand, ATVing, and telescope nights looking for Jupiter and Saturn with friends and family. It also carries a story for me. Feeling the same sun Ghassan Kanafani speaks of in his book Men Under the Sun makes me reflect on my grandfather arriving to this land. As disapora I always felt so lost in this world till I found my people, but that is a constant reminder to my privilege and the fact that I am still indebted to the actions of those that came before me.",
           technologies: [
-            "Persian Gulf",
-            "Kuwait desert",
-            "ATVing the dunes",
-            "telescope nights",
-            "Jupiter",
-            "Saturn",
           ],
           images: ["/nature/kuwait-beach-me.png", "/nature/kuwait-waterline.png"],
           color: "#90e890",
@@ -1134,13 +1074,8 @@ const PERSONAL: UniverseConfig = {
           name: "Canada: Backcountry, Canoes, Cottages",
           category: "Canada",
           description:
-            "Canada gave me another kind of aliveness. My first backcountry camping trip in Muskoka with friends is still one of the most magical experiences of my life. Canoeing through Canadian nature, hiking through forests near cottages, and lying on docks while getting absolutely rained on all gave me that same feeling: nothing between me and the world, no interface, no shielding.",
+            "Canada gave me a whole other version of nature! My first backcountry camping trip in Muskoka with friends is still one of the most magical experiences of my life. Canoeing through Canadian nature near Quebec, hiking through forests near cottages, and lying on docks while getting absolutely rained on all gave me that same feeling: nothing between me and the world. Just completely engulfed in the vastness and beauty of it all. ",
           technologies: [
-            "Muskoka backcountry",
-            "canoeing",
-            "rain on the docks",
-            "cottage hikes",
-            "first time",
           ],
           images: [
             "/nature/quebec-waterfall-reflection.png",
@@ -1162,8 +1097,8 @@ const PERSONAL: UniverseConfig = {
           name: "What nature means to me",
           category: "Personal note",
           description:
-            "Genuinely nothing makes me feel as alive. The stars in Wadi Rum, the ruins in Petra, the Kuwaiti desert at night, ATVing the dunes, canoeing through Canadian wilderness, hiking near a cottage, or lying on a dock in the rain all point to the same thing. Nature makes me present by removing the filters. Light pollution is the obvious metaphor, but it applies to so much tech: take away the shielding, look up, and what was there the whole time is just there.",
-          technologies: ["Aliveness", "Presence", "Vastness", "Time"],
+            "Genuinely nothing makes me feel as alive. The stars in Wadi Rum, the ruins in Petra, the Kuwaiti desert at night, ATVing the dunes, canoeing through Canadian wilderness, hiking in the middle of the forest, or lying on a dock in the rain all point to the same thing. Nature forces meditation. Nature forces presentness. Nature forces humility. It is the ultimate vastness, the ultimate unknown, and the ultimate reminder that we are small and temporary. It is also the ultimate beauty, the ultimate connection to something bigger than ourselves, and the ultimate reminder that there is still wonder in the world.",
+          technologies: [],
           color: "#c0ffc0",
         },
       ],

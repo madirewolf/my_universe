@@ -54,6 +54,8 @@ export interface RiftCinematicState {
   stageStart: number
   /** Flipped true by RiftCompileGate once the new universe's shaders are compiled. */
   ready: boolean
+  /** World-space point the camera was looking at before diving into the rift. */
+  departureLookAt?: [number, number, number]
 }
 
 /** Stage timing — single source of truth, shared with CameraController. */

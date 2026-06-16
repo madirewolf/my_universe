@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type TouchEvent as ReactTouchEvent } from "react"
 import { Html } from "@react-three/drei"
 import { useFrame } from "@react-three/fiber"
 import { ChevronLeft, ChevronRight } from "lucide-react"
@@ -45,7 +45,7 @@ const SECTION_LABELS: Record<Universe, Record<CardKind, string>> = {
     note: "Note",
   },
   personal: {
-    desc: "Story",
+    desc: "",
     tech: "Details",
     link: "Link",
     images: "Evidence",
@@ -67,17 +67,17 @@ function moonGlassBackground(color?: string, active = false): string {
 const EXACT_CONCEPTS: Record<string, MoonConcept> = {
   "euphoriphilia": "skyArchive",
   "soundcloud": "signalScope",
-  "currently spinning": "rover",
+  "currently spinning": "walk",
   "genre atlas": "translator",
   "what music means to me": "walk",
   "the question underneath": "walk",
   "how i frame it": "translator",
   "two-pronged mental health": "observatory",
-  "what i'm building toward": "rover",
+  "what i'm building toward": "skyArchive",
   "what i keep": "craterMuseum",
   "why i named her nyx": "translator",
   "gallery": "craterMuseum",
-  "letterboxd · @madirewolf": "rover",
+  "letterboxd · @madirewolf": "skyArchive",
   "favourite directors": "skyArchive",
   "the vault": "craterMuseum",
   "tv & limited series": "signalScope",
@@ -155,7 +155,7 @@ function makeSections(landmark: Landmark, universe: Universe): SectionData[] {
     label: natureMode ? "Memory" : landmark.sectionLabels?.story ?? labels.desc,
     kicker: natureMode
       ? landmark.category
-      : landmark.sectionKickers?.story ?? (universe === "personal" ? "what it means" : "what it does"),
+      : landmark.sectionKickers?.story ?? (universe === "personal" ? "" : "what it does"),
     body: landmark.description,
   })
 
@@ -579,6 +579,8 @@ function ActiveProjection({
   positions: [number, number, number][]
   color: string
 }) {
+  if (total <= 0) return null
+
   const activePosition = positions[activeIndex] ?? [0, 0, 0]
 
   if (concept === "observatory" || concept === "skyArchive") {
@@ -914,6 +916,252 @@ function InfoDeck({
   concept,
   sections,
   activeIndex,
+  landmark,
+  universe,
+  isMobile,
+}: {
+  concept: MoonConcept
+  sections: SectionData[]
+  activeIndex: number
+  landmark: Landmark
+  universe: Universe
+  isMobile: boolean
+}) {
+  const color = landmark.color
+  const textSections = useMemo(() => sections.filter((section) => section.kind === "desc" || section.kind === "note"), [sections])
+  const tagSection = sections.find((section) => section.kind === "tech")
+  const linkSection = sections.find((section) => section.kind === "link")
+  const gallerySection = sections.find((section) => section.kind === "images")
+  const activeText = textSections[Math.min(activeIndex, Math.max(0, textSections.length - 1))] ?? textSections[0]
+  const rightTextSection = !isMobile && textSections.length === 2 && !tagSection && !gallerySection && !linkSection
+    ? textSections[(activeIndex + 1) % 2]
+    : undefined
+  const forceTechRight = !isMobile && landmark.name === "Currently Spinning"
+  const links = useMemo(() => {
+    const out: { label: string; url: string }[] = []
+    if (landmark.link) out.push({ label: universe === "professional" ? "View project" : "Open link", url: landmark.link })
+    if (landmark.links) out.push(...landmark.links)
+    return out
+  }, [landmark.link, landmark.links, universe])
+
+  const shell: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+    fontFamily: "var(--font-sans), system-ui, -apple-system, sans-serif",
+  }
+  const leftColumn: CSSProperties = isMobile
+    ? {
+        position: "absolute",
+        left: 12,
+        right: 12,
+        bottom: activeText || links.length ? 305 : 70,
+        maxHeight: "30vh",
+        pointerEvents: "auto",
+      }
+    : {
+        position: "absolute",
+        left: 24,
+        // Sits below the (taller, two-row) "Current Planet" header. Bottom is
+        // bounded so a full gallery never collides with the mute/stasis
+        // buttons in the lower-left.
+        top: 128,
+        width: "clamp(300px, 24vw, 440px)",
+        maxHeight: "calc(100vh - 220px)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        pointerEvents: "auto",
+      }
+  const rightColumn: CSSProperties = isMobile
+    ? {
+        position: "absolute",
+        left: 12,
+        right: 12,
+        bottom: 70,
+        maxHeight: "38vh",
+        pointerEvents: "auto",
+      }
+    : {
+        position: "absolute",
+        right: 24,
+        top: 116,
+        width: "clamp(330px, 24vw, 500px)",
+        maxHeight: links.length ? "calc(100vh - 310px)" : "calc(100vh - 170px)",
+        pointerEvents: "auto",
+      }
+  const linkPanel: CSSProperties = isMobile
+    ? {
+        position: "absolute",
+        right: 12,
+        bottom: 12,
+        width: "min(360px, calc(100vw - 24px))",
+        pointerEvents: "auto",
+      }
+    : {
+        position: "absolute",
+        right: 24,
+        bottom: 32,
+        width: "clamp(330px, 24vw, 500px)",
+        pointerEvents: "auto",
+      }
+  // Desktop: two flex columns, each spanning from just under the top buttons
+  // down to an offset above the bottom buttons. The TOP panel takes the slack
+  // (flex 0 1 auto + inner scroll) and the BOTTOM panel rides directly under
+  // it — foolproof across viewport heights / browser zoom (no magic numbers).
+  const columnBase: CSSProperties = {
+    position: "absolute",
+    top: 116,
+    bottom: 104,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    pointerEvents: "auto",
+  }
+  const leftStack: CSSProperties = { ...columnBase, left: 24, width: "clamp(300px, 24vw, 460px)" }
+  const rightStack: CSSProperties = { ...columnBase, right: 24, width: "clamp(330px, 24vw, 500px)" }
+
+  // Mobile keeps its stacked bottom-sheet arrangement; rightPanelContent /
+  // showRight feed that branch only.
+  const leftHasContent = Boolean(gallerySection || tagSection)
+  const rightPanelContent: ReactNode = activeText ? (
+    <TextContent color={color} isMobile={isMobile} section={activeText} />
+  ) : tagSection ? (
+    <TagsContent color={color} isMobile={isMobile} landmark={landmark} section={tagSection} />
+  ) : gallerySection && landmark.images?.length ? (
+    <GalleryContent color={color} images={landmark.images} isMobile={isMobile} landmarkName={landmark.name} section={gallerySection} />
+  ) : null
+  const showRight = Boolean(
+    activeText ||
+      (!leftHasContent && tagSection) ||
+      (!leftHasContent && gallerySection && landmark.images?.length),
+  )
+
+  // Desktop content placement favors clean two-panel splits. With three or
+  // more panels, tags can stack under text again.
+  const hasText = Boolean(activeText)
+  const hasRightText = Boolean(rightTextSection)
+  const hasTags = Boolean(tagSection)
+  const hasGallery = Boolean(gallerySection && landmark.images?.length)
+  const showPortal = Boolean(linkSection && links.length > 0)
+  const desktopPanelCount = [hasText, hasTags, hasGallery, showPortal].filter(Boolean).length
+  const splitDesktopPair = desktopPanelCount === 2
+  const portalPairsWithGalleryOnly = splitDesktopPair && showPortal && hasGallery && !hasText && !hasTags
+  const leftHasText = hasText
+  const leftHasTags = hasTags && (!splitDesktopPair || !hasText) && !forceTechRight
+  const leftHasPortal = portalPairsWithGalleryOnly
+  const rightHasTags = (hasTags && splitDesktopPair && hasText) || (forceTechRight && hasTags)
+  const rightHasGallery = hasGallery
+  const rightHasPortal = showPortal && !leftHasPortal
+  const showLeftStack = leftHasText || leftHasTags || leftHasPortal
+  const showRightStack = rightHasTags || rightHasGallery || rightHasPortal || hasRightText
+
+  return (
+    <Html fullscreen zIndexRange={[18, 0]} style={{ pointerEvents: "none" }}>
+      <div style={shell}>
+        <style>{`
+          @keyframes moon-ui-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+
+        {isMobile ? (
+          <>
+            {leftHasContent && (
+              <div style={leftColumn} data-moon-swipe-ignore>
+                {gallerySection && landmark.images?.length ? (
+                  <MoonPanel color={color} isMobile={isMobile} maxHeight="inherit">
+                    <GalleryContent
+                      color={color}
+                      images={landmark.images}
+                      isMobile={isMobile}
+                      landmarkName={landmark.name}
+                      section={gallerySection}
+                    />
+                  </MoonPanel>
+                ) : null}
+                {tagSection ? (
+                  <MoonPanel color={color} isMobile={isMobile} maxHeight={gallerySection ? "16vh" : "inherit"}>
+                    <TagsContent color={color} isMobile={isMobile} landmark={landmark} section={tagSection} />
+                  </MoonPanel>
+                ) : null}
+              </div>
+            )}
+            {showRight && (
+              <div style={rightColumn} data-moon-swipe-ignore>
+                <MoonPanel color={color} isMobile={isMobile} maxHeight="inherit">
+                  {rightPanelContent}
+                </MoonPanel>
+              </div>
+            )}
+            {showPortal && (
+              <div style={linkPanel} data-moon-swipe-ignore>
+                <MoonPanel color={color} isMobile={isMobile}>
+                  <LinkContent color={color} isMobile={isMobile} links={links} section={linkSection!} />
+                </MoonPanel>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* LEFT: text first; tags stay here unless this is a two-panel text/tag moon. */}
+            {showLeftStack && (
+              <div style={leftStack} data-moon-swipe-ignore>
+                {leftHasText && (
+                  <MoonPanel color={color} isMobile={isMobile} maxHeight="100%" fill style={{ flex: "0 1 auto", minHeight: 0 }}>
+                    <TextContent color={color} isMobile={isMobile} section={activeText!} />
+                  </MoonPanel>
+                )}
+                {leftHasTags && (
+                  <MoonPanel color={color} isMobile={isMobile} style={{ flex: "0 0 auto" }}>
+                    <TagsContent color={color} isMobile={isMobile} landmark={landmark} section={tagSection!} />
+                  </MoonPanel>
+                )}
+                {leftHasPortal && (
+                  <MoonPanel color={color} isMobile={isMobile} style={{ flex: "0 0 auto" }}>
+                    <LinkContent color={color} isMobile={isMobile} links={links} section={linkSection!} />
+                  </MoonPanel>
+                )}
+              </div>
+            )}
+
+            {/* RIGHT: galleries live here; two-panel text/tag moons put tags here too. */}
+            {showRightStack && (
+              <div style={rightStack} data-moon-swipe-ignore>
+                {hasRightText && rightTextSection && (
+                  <MoonPanel color={color} isMobile={isMobile} maxHeight="100%" style={{ flex: "0 1 auto", minHeight: 0 }} fill>
+                    <TextContent color={color} isMobile={isMobile} section={rightTextSection} />
+                  </MoonPanel>
+                )}
+                {rightHasTags && (
+                  <MoonPanel color={color} isMobile={isMobile} style={{ flex: "0 0 auto" }}>
+                    <TagsContent color={color} isMobile={isMobile} landmark={landmark} section={tagSection!} />
+                  </MoonPanel>
+                )}
+                {rightHasGallery && (
+                  <MoonPanel color={color} isMobile={isMobile} maxHeight="100%" style={{ flex: "0 1 auto", minHeight: 0 }}>
+                    <GalleryContent color={color} images={landmark.images!} isMobile={isMobile} landmarkName={landmark.name} section={gallerySection!} />
+                  </MoonPanel>
+                )}
+                {rightHasPortal && (
+                  <MoonPanel color={color} isMobile={isMobile} style={{ flex: "0 0 auto" }}>
+                    <LinkContent color={color} isMobile={isMobile} links={links} section={linkSection!} />
+                  </MoonPanel>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Html>
+  )
+}
+
+function LegacyInfoDeck({
+  concept,
+  sections,
+  activeIndex,
   setActiveIndex,
   landmark,
   universe,
@@ -1126,6 +1374,357 @@ function InfoDeck({
   )
 }
 
+function MoonPanel({
+  children,
+  color,
+  isMobile,
+  maxHeight,
+  style,
+  fill,
+}: {
+  children: ReactNode
+  color: string
+  isMobile: boolean
+  maxHeight?: CSSProperties["maxHeight"]
+  /** Extra styles merged onto the panel root (e.g. flex sizing in a column). */
+  style?: CSSProperties
+  /** Let the inner content area grow to fill the panel so its own scroll
+   *  region (not a magic vh cap) handles overflow. Used by the auto-fitting
+   *  right-hand text panel. */
+  fill?: boolean
+}) {
+  return (
+    <div
+      style={{
+        animation: "moon-ui-in 0.55s ease 0.4s backwards",
+        borderRadius: isMobile ? 14 : 16,
+        overflow: "hidden",
+        background: moonGlassBackground(color),
+        border: `1px solid ${color}24`,
+        boxShadow: `0 0 22px ${color}10, 0 14px 34px rgba(0,0,0,0.16)`,
+        backdropFilter: "blur(22px)",
+        WebkitBackdropFilter: "blur(22px)",
+        color: "white",
+        display: "flex",
+        flexDirection: "column",
+        maxHeight,
+        ...style,
+      }}
+    >
+      <div style={{ height: 1, background: `linear-gradient(90deg, ${color}55, ${color}18, transparent 78%)` }} />
+      <div style={{ padding: isMobile ? 12 : 16, minHeight: 0, display: "flex", flexDirection: "column", ...(fill ? { flex: 1 } : null) }}>{children}</div>
+    </div>
+  )
+}
+
+function SectionHeader({
+  color,
+  isMobile,
+  section,
+}: {
+  color: string
+  isMobile: boolean
+  section: SectionData
+}) {
+  return (
+    <div style={{ minWidth: 0, marginBottom: 12 }}>
+      <div style={{ color, fontSize: isMobile ? 9 : 10, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 6 }}>
+        {section.label}
+      </div>
+      <div style={{ color: "rgba(255,255,255,0.48)", fontSize: isMobile ? 10 : 11, fontWeight: 650 }}>
+        {section.kicker}
+      </div>
+    </div>
+  )
+}
+
+function TextContent({ color, isMobile, section }: { color: string; isMobile: boolean; section: SectionData }) {
+  return (
+    <>
+      <SectionHeader color={color} isMobile={isMobile} section={section} />
+      <div
+        style={{
+          minHeight: 0,
+          // Desktop: fill the auto-fitted panel and scroll inside it. Mobile
+          // keeps its viewport cap (bottom-sheet layout).
+          flex: isMobile ? undefined : 1,
+          maxHeight: isMobile ? "27vh" : undefined,
+          overflowY: "auto",
+          paddingRight: 4,
+          color: "rgba(255,255,255,0.84)",
+          fontSize: isMobile ? 15 : 17,
+          lineHeight: 1.66,
+        }}
+      >
+        {section.body}
+      </div>
+    </>
+  )
+}
+
+function TagsContent({
+  color,
+  isMobile,
+  landmark,
+  section,
+}: {
+  color: string
+  isMobile: boolean
+  landmark: Landmark
+  section: SectionData
+}) {
+  return (
+    <>
+      <SectionHeader color={color} isMobile={isMobile} section={section} />
+      <div
+        style={{
+          minHeight: 0,
+          maxHeight: isMobile ? "12vh" : "22vh",
+          overflowY: "auto",
+          paddingRight: 4,
+          color: "rgba(255,255,255,0.82)",
+          fontSize: isMobile ? 13 : 15,
+          lineHeight: 1.55,
+        }}
+      >
+        {section.display === "text" ? (
+          section.body
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {landmark.technologies.map((item) => (
+              <span
+                key={item}
+                style={{
+                  padding: "5px 8px",
+                  borderRadius: 7,
+                  background: moonGlassBackground(color),
+                  border: `1px solid ${color}20`,
+                  color: `${color}e8`,
+                  fontSize: isMobile ? 10 : 11,
+                  fontWeight: 650,
+                }}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+function GalleryContent({
+  color,
+  images,
+  isMobile,
+  landmarkName,
+  section,
+}: {
+  color: string
+  images: string[]
+  isMobile: boolean
+  landmarkName: string
+  section: SectionData
+}) {
+  const [imageIndex, setImageIndex] = useState(0)
+  const [expanded, setExpanded] = useState(false)
+  const [naturalSize, setNaturalSize] = useState({ width: 16, height: 10 })
+  // Desktop hover-magnifier (Amazon-style): origin tracks the cursor so moving
+  // around the image magnifies whichever part you point at, not a fixed center.
+  const [zoom, setZoom] = useState({ active: false, x: 50, y: 50 })
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
+  const touchDidSwipe = useRef(false)
+  const src = images[Math.min(imageIndex, images.length - 1)]
+
+  useEffect(() => {
+    setImageIndex(0)
+    setExpanded(false)
+    setZoom({ active: false, x: 50, y: 50 })
+    setNaturalSize({ width: 16, height: 10 })
+  }, [landmarkName, images])
+
+  if (!src) return null
+
+  const step = (dir: number) => {
+    setImageIndex((index) => Math.max(0, Math.min(images.length - 1, index + dir)))
+  }
+  const onTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const start = touchStart.current
+    touchStart.current = null
+    const touch = event.changedTouches[0]
+    if (!start || !touch) return
+    const dx = touch.clientX - start.x
+    const dy = touch.clientY - start.y
+    if (Math.abs(dx) < 44 || Math.abs(dx) < Math.abs(dy) * 1.25) return
+    touchDidSwipe.current = true
+    step(dx < 0 ? 1 : -1)
+  }
+
+  return (
+    <>
+      <SectionHeader color={color} isMobile={isMobile} section={section} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, minHeight: 0 }}>
+        <div
+          onMouseEnter={isMobile ? undefined : () => setZoom((z) => ({ ...z, active: true }))}
+          onMouseLeave={isMobile ? undefined : () => setZoom((z) => ({ ...z, active: false }))}
+          onMouseMove={
+            isMobile
+              ? undefined
+              : (event) => {
+                  const rect = event.currentTarget.getBoundingClientRect()
+                  const x = ((event.clientX - rect.left) / rect.width) * 100
+                  const y = ((event.clientY - rect.top) / rect.height) * 100
+                  setZoom({
+                    active: true,
+                    x: Math.max(0, Math.min(100, x)),
+                    y: Math.max(0, Math.min(100, y)),
+                  })
+                }
+          }
+          onClick={isMobile ? () => {
+            if (touchDidSwipe.current) {
+              touchDidSwipe.current = false
+              return
+            }
+            setExpanded(true)
+          } : undefined}
+          onTouchStart={(event) => {
+            const touch = event.touches[0]
+            touchDidSwipe.current = false
+            if (touch) touchStart.current = { x: touch.clientX, y: touch.clientY }
+          }}
+          onTouchEnd={onTouchEnd}
+          style={{
+            width: "100%",
+            aspectRatio: `${naturalSize.width} / ${naturalSize.height}`,
+            maxHeight: isMobile ? "25vh" : "min(58vh, 540px)",
+            minHeight: isMobile ? 132 : 170,
+            borderRadius: 11,
+            border: `1px solid ${color}35`,
+            background: "rgba(0,0,0,0.18)",
+            overflow: "hidden",
+            display: "grid",
+            placeItems: "center",
+            cursor: "zoom-in",
+          }}
+        >
+          <img
+            src={src}
+            alt={`${landmarkName} ${imageIndex + 1}`}
+            draggable={false}
+            onLoad={(event) => {
+              const image = event.currentTarget
+              if (image.naturalWidth && image.naturalHeight) {
+                setNaturalSize({ width: image.naturalWidth, height: image.naturalHeight })
+              }
+            }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              display: "block",
+              // Magnify the part under the cursor; origin follows the pointer.
+              transform: !isMobile && zoom.active ? "scale(2.4)" : "scale(1)",
+              transformOrigin: `${zoom.x}% ${zoom.y}%`,
+              transition: "transform 0.16s ease-out",
+              willChange: "transform",
+            }}
+          />
+        </div>
+        {images.length > 1 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <button type="button" onClick={() => step(-1)} style={miniButton(color)} disabled={imageIndex === 0} aria-label="Previous image">
+              <ChevronLeft size={14} />
+            </button>
+            <span style={{ color: "rgba(255,255,255,0.48)", fontSize: 10 }}>{imageIndex + 1} / {images.length}</span>
+            <button type="button" onClick={() => step(1)} style={miniButton(color)} disabled={imageIndex === images.length - 1} aria-label="Next image">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+      {expanded && (
+        <div
+          onClick={isMobile ? () => setExpanded(false) : undefined}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 40,
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: isMobile ? "auto" : "none",
+            background: isMobile ? "rgba(4,6,16,0.68)" : "transparent",
+            backdropFilter: isMobile ? "blur(12px)" : undefined,
+            WebkitBackdropFilter: isMobile ? "blur(12px)" : undefined,
+          }}
+        >
+          <img
+            src={src}
+            alt={`${landmarkName} enlarged ${imageIndex + 1}`}
+            style={{
+              maxWidth: isMobile ? "92vw" : "70vw",
+              maxHeight: isMobile ? "78vh" : "78vh",
+              objectFit: "contain",
+              borderRadius: 16,
+              border: `1px solid ${color}35`,
+              boxShadow: `0 24px 90px rgba(0,0,0,0.5), 0 0 50px ${color}20`,
+              background: "rgba(0,0,0,0.34)",
+            }}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+function LinkContent({
+  color,
+  isMobile,
+  links,
+  section,
+}: {
+  color: string
+  isMobile: boolean
+  links: { label: string; url: string }[]
+  section: SectionData
+}) {
+  return (
+    <>
+      <SectionHeader color={color} isMobile={isMobile} section={section} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {links.map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "9px 11px",
+              borderRadius: 9,
+              background: moonGlassBackground(color),
+              border: `1px solid ${color}24`,
+              color,
+              textDecoration: "none",
+              fontSize: isMobile ? 11 : 12,
+              fontWeight: 750,
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+            }}
+          >
+            <span>{link.label}</span>
+            <span aria-hidden="true">open</span>
+          </a>
+        ))}
+      </div>
+    </>
+  )
+}
+
 function miniButton(color: string): CSSProperties {
   return {
     display: "inline-flex",
@@ -1153,10 +1752,12 @@ function miniButton(color: string): CSSProperties {
 export default function MoonView({ landmark, seed, universe, isMobile = false }: MoonViewProps) {
   const concept = useMemo(() => conceptForLandmark(landmark, seed), [landmark, seed])
   const sections = useMemo(() => makeSections(landmark, universe), [landmark, universe])
+  const textSections = useMemo(() => sections.filter((section) => section.kind === "desc" || section.kind === "note"), [sections])
+  const orbitSections = textSections.length > 1 ? textSections : []
   const [activeIndex, setActiveIndex] = useState(0)
   const [menuVisible, setMenuVisible] = useState(isMobile)
   const hideMenuRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const positions = useMemo(() => sectionPositions(concept, sections.length, isMobile), [concept, isMobile, sections.length])
+  const positions = useMemo(() => sectionPositions(concept, orbitSections.length, isMobile), [concept, isMobile, orbitSections.length])
 
   const showMenu = () => {
     if (hideMenuRef.current) {
@@ -1177,7 +1778,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
 
   useEffect(() => {
     setActiveIndex(0)
-  }, [landmark.name, sections.length])
+  }, [landmark.name, orbitSections.length])
 
   // Mobile: vertical swipe steps through the sections (swipe up = next,
   // swipe down = previous) — more intuitive than aiming at the orbit menu.
@@ -1187,6 +1788,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
   // camera.
   useEffect(() => {
     if (!isMobile) return
+    if (textSections.length <= 1) return
 
     let startX = 0
     let startY = 0
@@ -1216,7 +1818,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
       if (Math.abs(dy) < 56 || Math.abs(dy) < Math.abs(dx) * 1.4) return
       const step = dy < 0 ? 1 : -1
       setActiveIndex((index) =>
-        Math.min(sections.length - 1, Math.max(0, index + step)),
+        Math.min(textSections.length - 1, Math.max(0, index + step)),
       )
     }
 
@@ -1226,7 +1828,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
       window.removeEventListener("touchstart", onTouchStart)
       window.removeEventListener("touchend", onTouchEnd)
     }
-  }, [isMobile, sections.length])
+  }, [isMobile, textSections.length])
 
   useEffect(() => {
     setMenuVisible(isMobile)
@@ -1251,7 +1853,7 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
       />
       <MaterializeIn key={landmark.name}>
         <ConceptSet concept={concept} color={landmark.color} seed={seed + hashString(landmark.name) * 0.0001} isMobile={isMobile} />
-        {sections.map((section, index) => (
+        {orbitSections.map((section, index) => (
           <SectionBeacon
             key={`${section.kind}-${section.label}`}
             concept={concept}
@@ -1264,26 +1866,27 @@ export default function MoonView({ landmark, seed, universe, isMobile = false }:
         <ActiveProjection
           concept={concept}
           activeIndex={activeIndex}
-          total={sections.length}
+          total={orbitSections.length}
           positions={positions}
           color={landmark.color}
         />
       </MaterializeIn>
-      <SectionOrbitMenu
-        sections={sections}
-        activeIndex={activeIndex}
-        setActiveIndex={setActiveIndex}
-        color={landmark.color}
-        isMobile={isMobile}
-        visible={isMobile || menuVisible}
-        onMenuEnter={showMenu}
-        onMenuLeave={scheduleHideMenu}
-      />
+      {orbitSections.length > 1 && !isMobile && (
+        <SectionOrbitMenu
+          sections={orbitSections}
+          activeIndex={activeIndex}
+          setActiveIndex={setActiveIndex}
+          color={landmark.color}
+          isMobile={isMobile}
+          visible={menuVisible}
+          onMenuEnter={showMenu}
+          onMenuLeave={scheduleHideMenu}
+        />
+      )}
       <InfoDeck
         concept={concept}
         sections={sections}
         activeIndex={activeIndex}
-        setActiveIndex={setActiveIndex}
         landmark={landmark}
         universe={universe}
         isMobile={isMobile}

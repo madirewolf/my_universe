@@ -680,7 +680,7 @@ export default function UIOverlay({
             <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
               <div
                 className={cn(
-                  "font-bold tracking-tight mb-1",
+                  "font-sans font-bold tracking-tight mb-1",
                   isMobile ? "text-xl" : "text-3xl",
                 )}
                 style={{
@@ -708,13 +708,13 @@ export default function UIOverlay({
               </div>
 
               <div
-                className="font-medium text-sm"
+                className="font-display font-medium text-sm"
                 style={{
                   color: "rgba(255,255,255,0.52)",
                   textShadow: "0 0 12px rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.22)",
                 }}
               >
-                or rather my{" "}
+                {universe === "professional" && <>or rather my{" "}</>}
                 <span
                   className="glitch-text relative inline-block font-bold"
                   data-text={glitchText}
@@ -824,7 +824,7 @@ export default function UIOverlay({
           <div
             className={cn(
               "absolute pointer-events-auto",
-              isMobile ? "top-3 left-3 right-3" : "top-8 left-8 max-w-[360px]",
+              isMobile ? "top-3 left-3 right-3" : "top-8 left-8 max-w-[480px]",
             )}
             style={
               isMobile
@@ -934,26 +934,23 @@ export default function UIOverlay({
                   )}
                 </div>
               ) : (
-                <div className="px-5 py-4">
-                  <div
-                    className="mb-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
-                    style={{ color: `${selectedLandmark.color}cc` }}
-                  >
-                    Current Planet
-                  </div>
-                  <div className="text-lg font-bold leading-tight tracking-tight text-white">
+                <div className="flex items-center gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-shrink text-lg font-bold leading-tight tracking-tight text-white">
                     {selected.name}
                   </div>
                   <div
-                    className="mt-1 text-sm font-semibold leading-snug text-white/70"
+                    className="min-w-0 flex-1 border-l pl-3"
+                    style={{ borderColor: `${selectedLandmark.color}2e` }}
                   >
-                    {selectedLandmark.name}
-                  </div>
-                  <div
-                    className="mt-1 text-[11px]"
-                    style={{ color: "rgba(255,255,255,0.45)" }}
-                  >
-                    Moon {selectedLandmarkIndex + 1} / {moonCount}
+                    <div className="text-sm font-semibold leading-snug text-white/70">
+                      {selectedLandmark.name}
+                    </div>
+                    <div
+                      className="mt-0.5 text-[11px]"
+                      style={{ color: "rgba(255,255,255,0.45)" }}
+                    >
+                      Moon {selectedLandmarkIndex + 1} / {moonCount}
+                    </div>
                   </div>
                 </div>
               )}

@@ -10,8 +10,13 @@
 
 @layer base {
   :root {
-    --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-    --font-display: "Aptos Display", "Aptos", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    /* Body follows the display font so the "Welcome to my Universe" face is used
+       everywhere — resolves per-universe (Clash on professional, Cinzel on personal). */
+    --font-sans: var(--font-display);
+    --font-body: "General Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    /* Default display = professional (futuristic). Personal universe overrides below. */
+    --font-display: "Clash Display", "General Sans", "Segoe UI", system-ui, sans-serif;
+    --font-display-personal: "Cinzel", "Cormorant Garamond", Georgia, serif;
     --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
@@ -90,6 +95,12 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
+  }
+
+  /* Personal (inner) universe swaps the display family to the angelic serif.
+     Scoped off the root wrapper's data-universe attribute. */
+  [data-universe="personal"] {
+    --font-display: var(--font-display-personal);
   }
 
   h1,

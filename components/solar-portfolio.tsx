@@ -264,6 +264,7 @@ function CameraController({
   // Captured camera position when stage 'in' starts, AND nearRift snapshot
   // when stage 'out' starts. Reused for the lerp source.
   const stageStartPos = useRef<THREE.Vector3 | null>(null)
+  const riftDepartureLookAt = useRef(new THREE.Vector3(0, 0, 0))
 
   useFrame((state) => {
     const sr = riftState.current
@@ -309,6 +310,12 @@ function CameraController({
         sr.stageStart = state.clock.elapsedTime
         if (sr.stage === "in") {
           stageStartPos.current = camera.position.clone()
+          const departure = sr.departureLookAt
+          riftDepartureLookAt.current.set(
+            departure?.[0] ?? ORIGIN.x,
+            departure?.[1] ?? ORIGIN.y,
+            departure?.[2] ?? ORIGIN.z,
+          )
         }
       }
       const t = state.clock.elapsedTime - sr.stageStart
@@ -322,10 +329,10 @@ function CameraController({
       if (sr.stage === "in") {
         if (t < RIFT_TIMING.IN_ROTATE_DURATION) {
           // ROTATE sub-phase: camera holds at its start position; gaze
-          // pans smoothly from origin (sun) onto the rift.
+          // pans smoothly from the current focus onto the rift.
           const k = easeInOutCubic(t / RIFT_TIMING.IN_ROTATE_DURATION)
           camera.position.copy(stageStartPos.current!)
-          _lookAt.lerpVectors(ORIGIN, RIFT_WORLD_POS, k)
+          _lookAt.lerpVectors(riftDepartureLookAt.current, RIFT_WORLD_POS, k)
           syncCameraLookAt(camera, controls, _lookAt)
         } else if (t < RIFT_TIMING.IN_DURATION) {
           // ZOOM sub-phase: camera dollies start → nearRift, gaze locked
@@ -381,6 +388,7 @@ function CameraController({
           sr.stage = "idle"
           sr.stageStart = -1
           stageStartPos.current = null
+          riftDepartureLookAt.current.copy(ORIGIN)
           onCinematicComplete()
         }
       }
@@ -1085,6 +1093,9 @@ export default function SolarPortfolio() {
     // and can't go stale in a closure, so re-entry mid-cinematic (double
     // click, double-fired handler) is impossible.
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+    const departureLookAt = focusTargetVector
+      ? ([focusTargetVector.x, focusTargetVector.y, focusTargetVector.z] as [number, number, number])
+      : ([ORIGIN.x, ORIGIN.y, ORIGIN.z] as [number, number, number])
     setSelectedPlanet(null)
     setSelectedLandmark(null)
     setFocusTarget(null)
@@ -1099,7 +1110,7 @@ export default function SolarPortfolio() {
     // 'peak'. The DOM warp overlay starts its fade-in immediately via a CSS
     // transition-delay (RIFT_TIMING.COVER_DELAY), so it goes opaque just
     // before the swap without needing a mid-stage callback.
-    riftState.current = { stage: "in", stageStart: -1, ready: false }
+    riftState.current = { stage: "in", stageStart: -1, ready: false, departureLookAt }
   }
 
   const handleSwapUniverse = () => {
@@ -1124,7 +1135,7 @@ export default function SolarPortfolio() {
   // (Rotation now driven entirely by the NavDial joystick + the integrator above.)
 
   return (
-    <div className="w-full h-screen relative overflow-hidden">
+    <div className="w-full h-screen relative overflow-hidden" data-universe={universe}>
       <Background variant={config.backgroundVariant} />
 
       {/* No pointer-down transition cancel: interrupting a flight midway
