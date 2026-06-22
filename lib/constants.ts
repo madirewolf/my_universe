@@ -569,165 +569,6 @@ const PERSONAL: UniverseConfig = {
   planets: [
     {
       type: "personal",
-      distance: 9,
-      speed: 0.016,
-      size: 0.95,
-      phase: 1.1,
-      tilt: 0.10,
-      bump: 0.05,
-      name: "Music",
-      description: "Connection, euphoria, culture, and the sounds that make me feel alive.",
-      color: "#ff66cc",
-      tags: ["Mixing", "DJing", "Listening", "Producing"],
-      landmarks: [
-        {
-          name: "euphoriphilia",
-          category: "My Main Playlist",
-          description:
-            "My main playlist, named around the love of euphoria. Not just happiness in the simple sense, but that shared, overflowing feeling where your first instinct is to give it to someone else. It lives somewhere between bliss, melancholy, chaos, release, and the small utopian hope that joy is supposed to be shared.",
-          technologies: [],
-          color: "#ff66cc",
-          link: "https://open.spotify.com/playlist/2FQxHlFhPRnHfHnCC9uPF5",
-          sectionLabels: {
-            tech: "playlist notes",
-            story: "EUPHORIPHILIA",
-            link: "link to playlist",
-          },
-          sectionKickers: {
-            tech: "what it holds",
-            link: "Spotify",
-          },
-        },
-        {
-          name: "SoundCloud",
-          category: "DJ sets & edits :)",
-          description:
-            "Where the longer, looser experiments live. Mixing, DJing, and producing feel like capturing a feeling while it is still moving. I have yet to record a set im truly proud of, but my soundcloud has some fun experiments :))",
-          technologies: [],
-          color: "#ff80b8",
-          link: "https://soundcloud.com/personesque-bobensque",
-          sectionLabels: {
-            tech: "sets / edits",
-            link: "listen on SoundCloud",
-            story: "My SoundCloud Experiments",
-          },
-          sectionKickers: {
-            tech: "where it lives",
-            link: "mixes and tracks",
-          },
-          links: [
-            {
-              label: "Dopamine Kumo Mix",
-              url: "https://soundcloud.com/personesque-bobensque/dopamine-kumo-mix",
-            },
-            {
-              label: "FEEL IT CHAOS X BREATHE",
-              url: "https://soundcloud.com/personesque-bobensque/feel-it-chaos-x-breathe",
-            },
-            {
-              label: "hardcore sirdsapes x stop scaring the hoes",
-              url: "https://soundcloud.com/personesque-bobensque/hardcore-sirdsapes-x-stop-scaring-the-hoes",
-            },
-            {
-              label: "richasstaxi",
-              url: "https://soundcloud.com/personesque-bobensque/richaxxtaxi",
-            },
-          ],
-        },
-        {
-          name: "Currently Spinning",
-          category: "On rotation",
-          description:
-            "The artists I've been deep on lately. It shifts every few weeks, but the thread is usually the same: sounds that feel new, emotional, synthetic, warped, or strangely human. Music has always been how I reached people and cultures I would not have accessed otherwise. English, French, Slavic, German, Arabic. If it hits, it hits.",
-          technologies: [
-            "Brutalismus 3000",
-            "Autechre",
-            "Bladee",
-            "Benzii",
-            "Whitearmor",
-            "Oneohtrix Point Never",
-            "FKA Twigs",
-            "Playboi Carti",
-            "Halsey",
-            "Fakemink",
-            "Mietze Conte",
-            "Machine Girl",
-          ],
-          color: "#ff8fdd",
-          link: "https://open.spotify.com/user/5xe060hdw181po4eo06pezsr2",
-          sectionLabels: {
-            tech: "current fav artists",
-            link: "Spotify profile",
-            story: "Who I'm listening to right now"
-          },
-          sectionKickers: {
-            tech: "on rotation",
-            link: "where I listen",
-          },
-        },
-        {
-          name: "Genre Atlas",
-          category: "What I tune into",
-          description:
-            "A wide net, but not random. Electronic and experimental are the center of gravity because they feel like the future arriving through the body. Hyperpop, gabber, IDM, drain gang, ambient, rap, breakbeat, trance, glitch, and the edges in between. I like when a sound is unguarded enough to make me curious.",
-          technologies: [
-            "electro · hyperpop",
-            "techno · gabber",
-            "drain gang · cloud rap",
-            "IDM · experimental",
-            "left field bass",
-            "post-techno punk",
-            "indie · garage rock",
-            "plunderphonics",
-            "progressive electronic",
-            "ambient",
-            "uk garage · breakbeat",
-            "trance · nu-disco",
-            "drum & bass · drumstep",
-            "electroacoustic · glitch",
-            "vaporwave · digital futurism",
-            "experimental hip hop",
-            "rage rap · uk drill",
-          ],
-          color: "#ffb0e8",
-          sectionLabels: {
-            tech: "genres",
-            story: "Fav Genres"
-          },
-          sectionKickers: {
-            tech: "sounds I tune into",
-          },
-        },
-        {
-          name: "What music means to me",
-          category: "Personal note",
-          description:
-            "Music is the great connector. It made me feel less alone: sharing songs with close friends, hearing records from Marco's massive vinyl collection, finding strangers through electro-pop, playing tracks out loud, or sitting alone in a dark room and listening to To Pimp a Butterfly from beginning to end. Raving gave me community, then taught me what parts of that world I had outgrown. It helped me understand hedonism and lostness by going through them, not just thinking about them. I found myself through chaos, and music is still the cleanest way I know to turn that chaos into connection.",
-          technologies: [
-            "the great connector",
-            "catch a vibe",
-            "frequency · resonance",
-            "feeling captured",
-            "DJ · mix · morph",
-            "therapy · joy · euphoria",
-            "liminal raving",
-            "Raving · McKenzie Wark",
-          ],
-          color: "#ffd0f0",
-          sectionLabels: {
-            tech: "how it feels",
-            story: "My Music Journey"
-          },
-          sectionKickers: {
-            tech: "",
-          },
-          techAsText:
-            "The throughline is connection: catching a vibe with someone, feeling frequency and resonance, DJing as a way to mix and morph emotion, and music as therapy, joy, euphoria, and release. Even raving sits there for me now: not just a scene, but a liminal place where I learned what I wanted, what I had outgrown, and what still made me feel alive.",
-        },
-      ],
-    },
-    {
-      type: "personal",
       distance: 14,
       speed: 0.0086,
       size: 1.3,
@@ -736,71 +577,70 @@ const PERSONAL: UniverseConfig = {
       bump: 0.07,
       shape: "icosahedron",
       name: "Philosophy",
-      description: "What makes me tick: uncertainty, consciousness, technology, and the urge to connect people.",
+      description: "How I think about work, technology, and building tools that help people connect.",
       color: "#a070ff",
-      tags: ["Synthesis", "Spectrum", "Order", "Bridging"],
+      tags: ["Human-Centered Tech", "Connection", "Biology", "Systems"],
       landmarks: [
         {
-          name: "The Question Underneath",
-          category: "What I keep coming back to",
+          name: "Technology Should Connect",
+          category: "Work Philosophy",
           description:
-            "This planet is where I try and give you some insight into how my mind works. Well to be frank, this whole project kind of is just that! I feel like the question I keep going back to, that is under almost everything I care about: how do I balance the animal part of me that wants happiness, food, touch, pleasure, play, and comfort with the conscious part in me that wants to bigger things? There is no final answer. It changes by person, moment, body, context, and stage of life. The only certainty is how uncertain things are. Building that intuition to figure out when to listen to yourself as opposed to when to force yourself through is very difficult and an ever-evolving problem",
+            "A lot of why I went into computer engineering is here. I am fascinated by systems that help people find each other, understand each other, and spend less time fighting tools. I want to build technology that reduces friction, makes knowledge easier to reach, and turns screens back into something more human.",
           technologies: [
+            "connection",
+            "knowledge access",
+            "human-centered systems",
+            "better social tools",
           ],
           color: "#a070ff",
           sectionLabels: {
-            tech: "core tension",
+            tech: "principles",
+            story: "Why Tech",
           },
           sectionKickers: {
-            tech: "what keeps returning",
+            tech: "what I want tools to do",
           },
         },
         {
-          name: "Mental Health",
-          category: "Where I land hardest",
+          name: "Build Around The Human",
+          category: "Biology & Design",
           description:
-            "Mental health is double pronged. It is not just the phone, but it is also not just your nihilistic thoughts. If you wreck your body with bad sleep, disordered eating, no movement, burnout workouts, drugs, or self-medication, mindfulness alone cannot carry you.",
+            "Good tools should respect how people actually live: attention, energy, sleep, movement, food, motivation, and habit. The point is not to escape being human. It is to design systems that make healthier choices easier and make daily life feel less hostile to the body.",
           technologies: [
+            "attention",
+            "energy",
+            "sleep",
+            "fitness",
+            "behavior design",
           ],
           color: "#a8b8ff",
           sectionLabels: {
-            tech: "mental health model",
+            tech: "human stack",
+            story: "Human Biology",
           },
           sectionKickers: {
-            tech: "body and inner work",
+            tech: "systems that work with us",
           },
-          notes: [
-            {
-              label: "",
-              kicker: "",
-              body:
-                "If you optimize the body but never do the inner work, you are still stuck. Get the neurochemistry right so the brain is not fighting an uphill battle, then do the spiritual work: meditation, self-knowledge, first-principles morality, and bias awareness. My dream is to help people eat better quality foods, and get more complete supplements that aren't snake oil salesmen.",
-            },
-          ],
         },
         {
-          name: "What I'm Building Toward",
-          category: "The project",
+          name: "How I Work",
+          category: "Engineering Style",
           description:
-            "A lot of why I went into computer engineering is here. I am fascinated by tech because it can either extract attention from people or help them find each other. Social media feels broken because it was optimized to retain attention, not create connection. It amplifies fake highlights, anxiety, comparison, rage, misinformation, and shallow interaction. I want to make social media social again: real community, shared interests, friendship, knowledge access, and technology that removes the mundane so people can actually see each other.",
+            "I like first-principles thinking, clear feedback loops, and systems that can be tested, debugged, and improved. Whether it is software, AI, maps, hardware, or personal tools, I care about making ideas practical enough to help real people.",
           technologies: [
+            "first principles",
+            "feedback loops",
+            "debugging",
+            "practical systems",
           ],
           color: "#c8a0ff",
           sectionLabels: {
-            tech: "mission",
-            story: "My Dream for Tech"
+            tech: "working style",
+            story: "Engineering Mindset",
           },
           sectionKickers: {
-            tech: "what I want tech to do",
+            tech: "how I build",
           },
-          notes: [
-            {
-              label: "Tradition vs. Progress",
-              kicker: "",
-              body:
-                "I reject traditionalism when it means clinging to old things only because they are old, but I understand why humans preserve old patterns. Sometimes it slows down the loss of things that still work. From religion and spirituality, I keep meditation, group meditation, kindness, ego dissolution, charity, cleanliness, purity of soul, solidarity, gentleness toward the innocent and weak, and hating the action without hating the person. I reject the inherited cruelty: sexism, racism, slavery, and anything that asks people to worship harm just because it is old.",
-            },
-          ],
         },
       ],
     },

@@ -68,16 +68,6 @@ function moonGlassBackground(color?: string, active = false): string {
 }
 
 const EXACT_CONCEPTS: Record<string, MoonConcept> = {
-  "euphoriphilia": "skyArchive",
-  "soundcloud": "signalScope",
-  "currently spinning": "walk",
-  "genre atlas": "translator",
-  "what music means to me": "walk",
-  "the question underneath": "walk",
-  "how i frame it": "translator",
-  "two-pronged mental health": "observatory",
-  "what i'm building toward": "skyArchive",
-  "what i keep": "craterMuseum",
   "why i named her nyx": "translator",
   "gallery": "craterMuseum",
   "letterboxd · @madirewolf": "skyArchive",
@@ -121,7 +111,6 @@ function conceptForLandmark(landmark: Landmark, seed: number): MoonConcept {
   if (EXACT_CONCEPTS[key]) return EXACT_CONCEPTS[key]
 
   const text = `${landmark.name} ${landmark.category} ${landmark.technologies.join(" ")}`.toLowerCase()
-  if (text.includes("soundcloud") || text.includes("spotify") || text.includes("music")) return "signalScope"
   if (text.includes("film") || text.includes("director") || text.includes("letterboxd")) return "skyArchive"
   if (text.includes("petra") || text.includes("ruins") || text.includes("gallery")) return "craterMuseum"
   if (text.includes("wadi") || text.includes("stars") || text.includes("nature")) return "observatory"
@@ -1410,12 +1399,23 @@ function MoonPanel({
         color: "white",
         display: "flex",
         flexDirection: "column",
+        flex: isMobile ? "0 0 auto" : undefined,
         maxHeight,
         ...style,
       }}
     >
       <div style={{ height: 1, background: `linear-gradient(90deg, ${color}55, ${color}18, transparent 78%)` }} />
-      <div style={{ padding: isMobile ? 12 : 16, minHeight: 0, display: "flex", flexDirection: "column", ...(fill ? { flex: 1 } : null) }}>{children}</div>
+      <div
+        style={{
+          padding: isMobile ? 12 : 16,
+          minHeight: isMobile ? "auto" : 0,
+          display: "flex",
+          flexDirection: "column",
+          ...(fill ? { flex: 1 } : null),
+        }}
+      >
+        {children}
+      </div>
     </div>
   )
 }
