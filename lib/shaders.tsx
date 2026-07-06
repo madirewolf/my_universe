@@ -52,6 +52,26 @@ const LIGHTING_GLSL = /* glsl */ `
   }
 `
 
+// Approximate normal perturbation for procedural relief. Tangent frames are
+// built the same way around the object-space direction (used for sampling
+// the height field) and the view-space normal (used for shading); because
+// object->view is a rigid rotation the frames correspond closely enough for
+// decorative noise bumps.
+const BUMP_GLSL = /* glsl */ `
+  void objTangents(vec3 sp, out vec3 t1, out vec3 t2) {
+    vec3 up = abs(sp.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+    t1 = normalize(cross(up, sp));
+    t2 = cross(sp, t1);
+  }
+  vec3 bumpNormal(vec3 nView, float h0, float hx, float hy, float eps, float strength) {
+    vec3 upV = abs(nView.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+    vec3 t1v = normalize(cross(upV, nView));
+    vec3 t2v = cross(nView, t1v);
+    vec2 g = vec2(hx - h0, hy - h0) / eps;
+    return normalize(nView - (t1v * g.x + t2v * g.y) * strength);
+  }
+`
+
 function hexToVec3(hex: string): THREE.Color {
   return new THREE.Color(hex)
 }
@@ -94,17 +114,17 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
-            vec3 hsv2rgb(vec3 c){
-              vec3 p = abs(fract(c.xxx + vec3(0.0,2.0/3.0,1.0/3.0))*6.0-3.0);
-              return c.z * mix(vec3(1.0), clamp(p-1.0,0.0,1.0), c.y);
-            }
             void main(){
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
               vec3 sp = normalize(vObj);
               float ndv = max(dot(n, v), 0.0);
               float film = pow(1.0 - ndv, 1.5);
-              float hue = fract(film * 1.5 + 0.05 * sin(time*0.5));
-              vec3 iri = hsv2rgb(vec3(hue, 0.9, 1.0));
+              // Thin-film interference: per-channel phase offsets over the
+              // optical thickness — soap-bubble pastels, not a raw hue wheel.
+              float thick = film * 3.0 + 0.15 * sin(time * 0.3);
+              vec3 iri = 0.5 + 0.5 * cos(6.28318 * (thick * vec3(0.90, 1.00, 1.15)) + vec3(0.0, 0.6, 1.2));
+              iri = pow(iri, vec3(1.35));
+              iri = mix(iri, vec3(1.0), 0.12);
               // Bands by latitude (continuous at poles)
               float bands = 0.5 + 0.5*sin(sp.y*3.14159*uBandFreq + time*0.8);
               vec3 bandCol = mix(vec3(0.8,0.1,0.5), vec3(0.0,1.0,0.6), bands);
@@ -249,6 +269,10 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             uSpecStrength: { value: 0.55 },
             uHexScaleLarge: { value: 4.0 },
             uHexScaleSmall: { value: 12.0 },
+            // Palette follows the planet's accent so the two ai-controls
+            // planets (blue Controls vs purple Applied AI) read as siblings,
+            // not clones.
+            uAccent: { value: hexToVec3(accentColor || "#4080ff") },
           }}
           vertexShader={
             /* glsl */ `
@@ -269,7 +293,7 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength;
             uniform float uHexScaleLarge, uHexScaleSmall;
-            uniform vec3 uLightDir;
+            uniform vec3 uLightDir, uAccent;
             varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
@@ -323,49 +347,49 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
               vec3 sp = normalize(vObj);  // anchored to planet body, no seam
 
-              // Dark navy base with micro surface texture (also seam-free)
+              // Dark accent-tinted base with micro surface texture (seam-free)
               float surf = fbm(sp * 8.0) * 0.035;
-              vec3 col = vec3(0.039, 0.078, 0.157) + surf;
+              vec3 col = uAccent * 0.16 + surf;
 
               // Two-scale hex lattice via triplanar projection
               vec4 hL = hexTriplanar(sp, uHexScaleLarge, 0.04);
               vec4 hS = hexTriplanar(sp, uHexScaleSmall, 0.025);
 
               // Pulsing active cell fills
-              col += vec3(0.01, 0.045, 0.12) * hL.z * 0.6;
-              col += vec3(0.005, 0.02, 0.06) * hS.z * 0.3;
+              col += uAccent * 0.12 * hL.z * 0.6;
+              col += uAccent * 0.06 * hS.z * 0.3;
 
               // Hex grid lines
               float edges = max(hL.x * 0.75, hS.x * 0.4);
-              col = mix(col, vec3(0.12, 0.38, 0.62), edges);
+              col = mix(col, mix(uAccent, vec3(0.85), 0.18) * 0.62, edges);
 
               // Bright center nodes
               float nodes = max(hL.y * 0.95, hS.y * 0.55);
-              col = mix(col, vec3(0.3, 0.72, 1.0), nodes);
+              col = mix(col, mix(uAccent, vec3(1.0), 0.35), nodes);
 
               // Scan ring sweeping around the planet's Y axis (anchored, seam-free)
               float lon = atan(sp.z, sp.x);
               float scanPhase = fract(lon * 0.15915494 - time * 0.06);
               float scan = exp(-scanPhase * scanPhase * 4000.0) * 0.3;
-              col += vec3(0.0, 0.5, 1.0) * scan;
+              col += uAccent * scan;
 
               // Fine latitude micro-lines (lat = sp.y, [-1, 1])
               float latGrid = 0.5 + 0.5 * sin(sp.y * 80.0);
-              col += vec3(0.04, 0.16, 0.4) * smoothstep(0.97, 1.0, latGrid) * 0.1;
+              col += uAccent * 0.4 * smoothstep(0.97, 1.0, latGrid) * 0.1;
 
               // Lighting
               LightOut lo = shade(n, v, l, col, uSpecPower, uSpecStrength, 0.0, uAmbient);
 
               // Emissive glow layers
               vec3 em = vec3(0.0);
-              em += vec3(0.1, 0.42, 0.82) * edges * 0.45;
-              em += vec3(0.32, 0.72, 1.0) * nodes * 1.3;
-              em += vec3(0.01, 0.1, 0.32) * (hL.z + hS.z * 0.5) * 0.35;
-              em += vec3(0.0, 0.55, 1.0) * scan * 0.6;
+              em += uAccent * 0.8 * edges * 0.45;
+              em += mix(uAccent, vec3(1.0), 0.4) * nodes * 1.3;
+              em += uAccent * 0.3 * (hL.z + hS.z * 0.5) * 0.35;
+              em += uAccent * scan * 0.6;
 
-              // Fresnel rim — electric blue
+              // Fresnel rim — electric accent halo
               float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
-              em += vec3(0.05, 0.22, 1.0) * fres * 1.0;
+              em += uAccent * fres * 1.0;
 
               gl_FragColor = vec4(lo.color + em, 1.0);
             }
@@ -374,6 +398,9 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
         />
       )
     case "software-systems":
+      // PCB planet, triplanar. Everything samples the object-space normal
+      // (no vUv) so there is no wrap seam or pole pinch, and the pattern
+      // rotates with the planet instead of swimming through world space.
       return (
         <shaderMaterial
           uniforms={{
@@ -383,9 +410,9 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             uSpecPower: { value: 120.0 },
             uSpecStrength: { value: 0.5 },
             uRim: { value: 0.4 },
-            uCircuitScale: { value: 12.0 },
-            uChipScale: { value: 4.0 },
-            uDataSpeed: { value: 2.0 },
+            uCircuitScale: { value: 6.0 },
+            uChipScale: { value: 2.2 },
+            uDataSpeed: { value: 0.5 },
             uSubstrateCol: { value: new THREE.Color("#0a1a12") },
             uSiliconCol: { value: new THREE.Color("#1a3a2a") },
             uTraceCol: { value: new THREE.Color("#c9a060") },
@@ -394,12 +421,12 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
           }}
           vertexShader={
             /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            varying vec3 vN; varying vec3 vView; varying vec3 vObj; varying vec3 vLocal;
             void main(){
-              vUv = uv;
+              vObj = normal;
+              vLocal = position;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
               vec4 mv = viewMatrix * wp;
               vView = normalize(-mv.xyz);
               gl_Position = projectionMatrix * mv;
@@ -411,7 +438,7 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             uniform float time, uCircuitScale, uChipScale, uDataSpeed;
             uniform float uAmbient, uSpecPower, uSpecStrength, uRim;
             uniform vec3 uLightDir, uSubstrateCol, uSiliconCol, uTraceCol, uDataCol, uChipCol;
-            varying vec2 vUv; varying vec3 vN, vPos, vView;
+            varying vec3 vN, vView, vObj, vLocal;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
@@ -419,126 +446,83 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
               return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
             }
 
-            // Create circuit traces (horizontal and vertical lines)
-            float circuitTraces(vec2 uv, float scale) {
-              vec2 scaled = uv * scale;
-              vec2 grid = floor(scaled);
-              vec2 local = fract(scaled);
-              
-              // Random pattern for trace direction
-              float pattern = hash21(grid);
-              
-              // Horizontal or vertical traces
-              float hTrace = step(0.45, local.y) * step(local.y, 0.55);
-              float vTrace = step(0.45, local.x) * step(local.x, 0.55);
-              
-              // Mix based on pattern
-              float trace = mix(hTrace, vTrace, step(0.5, pattern));
-              
-              // Add some gaps
-              float hasTrace = step(0.3, hash21(grid + 0.5));
-              
-              return trace * hasTrace;
-            }
+            // One PCB layer in 2D: x=trace, y=chip+pins, z=pad, w=data packet
+            vec4 pcbLayer(vec2 uv) {
+              // Traces / pads / data share the fine grid
+              vec2 tScaled = uv * uCircuitScale;
+              vec2 tGrid  = floor(tScaled);
+              vec2 tLocal = fract(tScaled);
+              float pattern  = hash21(tGrid);
+              float hasTrace = step(0.3, hash21(tGrid + 0.5));
 
-            // Create chip/IC packages
-            float chipPackages(vec2 uv, float scale) {
-              vec2 scaled = uv * scale;
-              vec2 grid = floor(scaled);
-              vec2 local = fract(scaled) - 0.5;
-              
-              // Only place chips at certain grid positions
-              float hasChip = step(0.7, hash21(grid));
-              
-              // Rectangular chip shape
+              float hTrace = step(0.45, tLocal.y) * step(tLocal.y, 0.55);
+              float vTrace = step(0.45, tLocal.x) * step(tLocal.x, 0.55);
+              float trace  = mix(hTrace, vTrace, step(0.5, pattern)) * hasTrace;
+
+              // Solder pads / vias
+              float pad = smoothstep(0.12, 0.08, length(tLocal - 0.5)) * step(0.6, hash21(tGrid));
+
+              // Data packets flowing along the traces
+              float offset = hash21(tGrid + 1.5) * 6.28;
+              float flow   = fract(time * uDataSpeed + offset);
+              float hData  = step(abs(tLocal.y - flow), 0.08) * hTrace;
+              float vData  = step(abs(tLocal.x - flow), 0.08) * vTrace;
+              float data   = mix(hData, vData, step(0.5, pattern)) * hasTrace;
+
+              // IC packages on the coarse grid, with pins on the sides
+              vec2 cScaled = uv * uChipScale;
+              vec2 cGrid  = floor(cScaled);
+              vec2 cLocal = fract(cScaled) - 0.5;
+              float hasChip = step(0.7, hash21(cGrid));
               vec2 chipSize = vec2(0.35, 0.28);
-              vec2 d = abs(local) - chipSize;
+              vec2 d = abs(cLocal) - chipSize;
               float chip = step(max(d.x, d.y), 0.0);
-              
-              // Add pins on sides
               float pinSpacing = 0.08;
-              float pinWidth = 0.02;
-              float pinY = abs(mod(local.y + pinSpacing * 0.5, pinSpacing) - pinSpacing * 0.5);
-              float pins = step(pinY, pinWidth) * step(chipSize.x, abs(local.x)) * step(abs(local.x), chipSize.x + 0.08);
-              
-              return (chip + pins) * hasChip;
+              float pinY = abs(mod(cLocal.y + pinSpacing * 0.5, pinSpacing) - pinSpacing * 0.5);
+              float pins = step(pinY, 0.02) * step(chipSize.x, abs(cLocal.x)) * step(abs(cLocal.x), chipSize.x + 0.08);
+              float chipAll = clamp(chip + pins, 0.0, 1.0) * hasChip;
+
+              return vec4(trace, chipAll, pad, data);
             }
 
-            // Create solder pads/vias
-            float solderPads(vec2 uv, float scale) {
-              vec2 scaled = uv * scale;
-              vec2 local = fract(scaled) - 0.5;
-              
-              float dist = length(local);
-              float pad = smoothstep(0.12, 0.08, dist);
-              
-              // Only some positions have pads
-              float hasPad = step(0.6, hash21(floor(scaled)));
-              
-              return pad * hasPad;
-            }
-
-            // Animated data packets flowing through traces
-            float dataFlow(vec2 uv, float scale, float speed) {
-              vec2 scaled = uv * scale;
-              vec2 grid = floor(scaled);
-              vec2 local = fract(scaled);
-              
-              float pattern = hash21(grid);
-              float offset = hash21(grid + 1.5) * 6.28;
-              
-              // Data moving along traces
-              float flow = fract(time * speed + offset);
-              
-              float hData = step(abs(local.y - flow), 0.08) * step(0.45, local.y) * step(local.y, 0.55);
-              float vData = step(abs(local.x - flow), 0.08) * step(0.45, local.x) * step(local.x, 0.55);
-              
-              float data = mix(hData, vData, step(0.5, pattern));
-              float hasTrace = step(0.3, hash21(grid + 0.5));
-              
-              return data * hasTrace;
+            // Triplanar blend — projection plane picked by the object-space
+            // NORMAL, pattern sampled from the object-space POSITION. On the
+            // cube body each face maps to exactly one clean PCB plane; on any
+            // other shape it blends seam-free. Anchored: rotates with the body.
+            vec4 pcbTriplanar(vec3 p, vec3 nrm) {
+              vec3 w = pow(abs(nrm), vec3(8.0));
+              w /= max(w.x + w.y + w.z, 1e-4);
+              return pcbLayer(p.yz) * w.x + pcbLayer(p.xz) * w.y + pcbLayer(p.xy) * w.z;
             }
 
             void main(){
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              
-              // Layer the circuit elements
-              float traces = circuitTraces(vUv, uCircuitScale);
-              float chips = chipPackages(vUv, uChipScale);
-              float pads = solderPads(vUv, uCircuitScale);
-              float data = dataFlow(vUv, uCircuitScale, uDataSpeed);
-              
-              // Base PCB substrate with texture
-              vec3 substrate = uSubstrateCol * (0.95 + 0.05 * fbm(vPos * 2.0));
-              
-              // Silicon substrate visible around traces
-              vec3 silicon = mix(substrate, uSiliconCol, step(0.01, traces + pads));
-              
-              // Copper/gold traces
-              vec3 traceColor = uTraceCol * (0.9 + 0.1 * fbm(vPos * 8.0));
+              vec3 op = vLocal;             // object-space position (flat faces vary)
+              vec3 an = normalize(vObj);    // object-space normal (plane choice)
+
+              vec4 pcb = pcbTriplanar(op, an);
+              float traces = pcb.x, chips = pcb.y, pads = pcb.z, data = pcb.w;
+
+              // Base PCB substrate (object-anchored micro noise)
+              vec3 substrate = uSubstrateCol * (0.95 + 0.05 * fbm(op * 4.0));
+              vec3 silicon    = mix(substrate, uSiliconCol, step(0.01, traces + pads));
+              vec3 traceColor = uTraceCol * (0.9 + 0.1 * fbm(op * 16.0));
               vec3 withTraces = mix(silicon, traceColor, traces * 0.9);
-              
-              // Solder pads (shinier)
-              vec3 padColor = mix(uTraceCol, vec3(0.8), 0.3);
-              vec3 withPads = mix(withTraces, padColor, pads);
-              
-              // Chip packages (dark plastic)
-              vec3 chipColor = uChipCol * (0.95 + 0.05 * noise(vPos * 15.0));
-              vec3 withChips = mix(withPads, chipColor, chips);
-              
-              // Apply lighting
+              vec3 padColor   = mix(uTraceCol, vec3(0.8), 0.3);
+              vec3 withPads   = mix(withTraces, padColor, pads);
+              vec3 chipColor  = uChipCol * (0.95 + 0.05 * noise(op * 30.0));
+              vec3 withChips  = mix(withPads, chipColor, chips);
+
               LightOut lo = shade(n, v, l, withChips, uSpecPower, uSpecStrength, uRim, uAmbient);
-              
-              // Add glowing data flowing through traces
+
+              // Emissive: data packets + soft chip shimmer. Boosted on the
+              // shadow side so the board "lights up at night".
+              float night = 1.0 + (1.0 - lo.ndl) * 0.9;
               vec3 dataGlow = uDataCol * data * 1.2;
-              
-              // Subtle chip activity glow
-              float chipActivity = chips * (0.5 + 0.5 * sin(time * 3.0 + hash21(floor(vUv * uChipScale)) * 6.28));
-              vec3 chipGlow = mix(vec3(0.0), uDataCol * 0.3, chipActivity);
-              
-              vec3 final = lo.color + dataGlow + chipGlow;
-              
-              gl_FragColor = vec4(final, 1.0);
+              float chipActivity = chips * (0.5 + 0.5 * sin(time * 3.0 + dot(op, vec3(5.0, 7.0, 3.0))));
+              vec3 chipGlow = uDataCol * 0.3 * chipActivity;
+
+              gl_FragColor = vec4(lo.color + (dataGlow + chipGlow) * night, 1.0);
             }
           `
           }
@@ -559,12 +543,12 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
           }}
           vertexShader={
             /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView;
+            varying vec2 vUv; varying vec3 vN; varying vec3 vView; varying vec3 vObj;
             void main(){
               vUv = uv;
+              vObj = normal;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
               vec4 mv = viewMatrix * wp;
               vView = normalize(-mv.xyz);
               gl_Position = projectionMatrix * mv;
@@ -575,7 +559,7 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             /* glsl */ `
             uniform float time, uAmbient, uSpecPower, uSpecStrength, uGridScale, uSweepSpeed;
             uniform vec3 uLightDir;
-            varying vec2 vUv; varying vec3 vN, vPos, vView;
+            varying vec2 vUv; varying vec3 vN, vView, vObj;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
@@ -591,9 +575,10 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
 
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vObj);  // anchored — terrain rotates with the planet
 
               // Tactical relief — fbm "terrain" tint over a dark navy base
-              float relief = fbm(vPos * 1.6) * 0.4 + fbm(vPos * 5.0) * 0.06;
+              float relief = fbm(sp * 3.2) * 0.4 + fbm(sp * 10.0) * 0.06;
               vec3 base = vec3(0.005, 0.025, 0.04) + vec3(0.0, 0.045, 0.07) * relief;
 
               // Lat/lon grid (minor + major)
@@ -770,6 +755,259 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
               // doesn't disappear into the background
               float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
               vec3 em = vec3(0.06, 0.10, 0.18) * fres;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
+            }
+          `
+          }
+        />
+      )
+
+    case "philosophy":
+      // Ink diffusing in still water — domain-warped fbm marbling in the
+      // planet's accent, with pale parchment veins and soft relief.
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 0.6, 0.8).normalize() },
+            uAmbient: { value: 0.3 },
+            uSpecPower: { value: 40.0 },
+            uSpecStrength: { value: 0.25 },
+            uBaseColor: { value: hexToVec3(accentColor || "#a070ff") },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
+            void main() {
+              vLocal = position;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient, uSpecPower, uSpecStrength;
+            uniform vec3 uLightDir, uBaseColor;
+            varying vec3 vN, vView, vLocal;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+            ${BUMP_GLSL}
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              // Direction of the object-space POSITION — continuous across
+              // the icosahedron's flat facets (its normals are not).
+              vec3 sp = normalize(vLocal);
+
+              // Two-stage domain warp — the slow drift is the ink diffusing
+              vec3 q = vec3(
+                fbm(sp * 2.0 + vec3(0.0, 0.0, time * 0.015)),
+                fbm(sp * 2.0 + vec3(5.2, 1.3, 0.0)),
+                fbm(sp * 2.0 + vec3(1.7, 9.2, 0.0)));
+              vec3 r = vec3(
+                fbm(sp * 2.0 + 2.6 * q + vec3(1.7, 9.2, time * 0.02)),
+                fbm(sp * 2.0 + 2.6 * q + vec3(8.3, 2.8, 0.0)),
+                fbm(sp * 2.0 + 2.6 * q + vec3(3.1, 6.9, 0.0)));
+              float ink = fbm(sp * 2.4 + 3.2 * r);
+
+              // Abyssal ink -> accent body -> pale parchment veins
+              vec3 deep = uBaseColor * 0.10 + vec3(0.008, 0.006, 0.02);
+              vec3 mid  = uBaseColor * 0.75;
+              vec3 vein = mix(uBaseColor, vec3(0.96, 0.94, 0.90), 0.75);
+              vec3 base = mix(deep, mid, smoothstep(0.25, 0.62, ink));
+              float veins = smoothstep(0.58, 0.72, ink) * (1.0 - smoothstep(0.72, 0.86, ink));
+              base = mix(base, vein, veins * 0.85);
+
+              // Fine marble filaments riding the warp field
+              float fil = abs(sin((ink + q.x) * 24.0));
+              base += uBaseColor * 0.12 * (1.0 - smoothstep(0.0, 0.25, fil));
+
+              // Relief from the ink field (warp frozen for the offset taps)
+              vec3 t1o, t2o; objTangents(sp, t1o, t2o);
+              float e = 0.02;
+              float hx = fbm((sp + t1o * e) * 2.4 + 3.2 * r);
+              float hy = fbm((sp + t2o * e) * 2.4 + 3.2 * r);
+              vec3 nb = bumpNormal(n, ink, hx, hy, e, 0.35);
+
+              LightOut lo = shade(nb, v, l, base, uSpecPower, uSpecStrength, 0.0, uAmbient);
+
+              // Veins hold a faint glow; soft accent rim
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.5);
+              vec3 em = vein * veins * 0.15 + uBaseColor * fres * 0.55;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
+            }
+          `
+          }
+        />
+      )
+
+    case "film":
+      // Silver-screen planet: slowly morphing monochrome imagery washed in
+      // warm projector light, with grain, flicker, scratches, a drifting
+      // anamorphic streak, and a reel-change cue dot.
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 0.5, 0.85).normalize() },
+            uAmbient: { value: 0.5 },
+            uBaseColor: { value: hexToVec3(accentColor || "#ffaa55") },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
+            void main() {
+              vLocal = position;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient;
+            uniform vec3 uLightDir, uBaseColor;
+            varying vec3 vN, vView, vLocal;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              // Raw object position for the fields (well-defined on the torus
+              // body), direction only for longitude/latitude effects.
+              vec3 op = vLocal;
+              vec3 nd = normalize(vLocal);
+
+              // Soft monochrome "imagery" slowly morphing across the surface
+              float scene  = fbm(op * 1.6 + vec3(0.0, time * 0.012, 0.0));
+              float scene2 = fbm(op * 3.2 - vec3(time * 0.008, 0.0, 0.0));
+              float lumi = smoothstep(0.2, 0.85, scene * 0.7 + scene2 * 0.3);
+              vec3 silver = mix(vec3(0.04, 0.04, 0.05), vec3(0.92, 0.90, 0.86), lumi);
+              vec3 base = silver * mix(vec3(1.0), uBaseColor * 1.35, 0.35);
+
+              // Projector flicker — small global luminance wobble
+              float flick = 0.92 + 0.08 * noise(vec3(time * 12.0, 3.7, 9.1));
+              base *= flick;
+
+              // Film grain, re-rolled at 24 fps
+              float grain = hash(op * 550.0 + floor(time * 24.0));
+              base += (grain - 0.5) * 0.09;
+
+              // Occasional vertical scratch at a random longitude
+              float lon = atan(nd.z, nd.x) * 0.15915494 + 0.5;
+              float scratchSeed = floor(time * 0.8);
+              float scratchLon  = hash(vec3(scratchSeed, 1.7, 4.2));
+              float scratchOn   = step(0.55, hash(vec3(scratchSeed, 9.1, 2.3)));
+              float dLon = abs(fract(lon - scratchLon + 0.5) - 0.5);
+              base += vec3(0.9) * smoothstep(0.0035, 0.0, dLon) * scratchOn * 0.5;
+
+              // Reel-change cue dot — blinks in one spot every ~9s
+              float cue = step(0.955, fract(time / 9.0));
+              float cueDot = smoothstep(0.994, 0.9965, dot(nd, normalize(vec3(0.55, 0.6, 0.58)))) * cue;
+              base = mix(base, vec3(0.35, 0.2, 0.1), cueDot * 0.9);
+
+              LightOut lo = shade(n, v, l, base, 30.0, 0.12, 0.0, uAmbient);
+
+              // Drifting anamorphic lens streak + warm projector halo
+              float streakY = sin(time * 0.1) * 0.35;
+              float streak = exp(-pow((nd.y - streakY) * 9.0, 2.0))
+                           * exp(-pow((fract(lon - time * 0.02) - 0.5) * 4.0, 2.0));
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.5);
+              vec3 em = vec3(0.35, 0.55, 1.0) * streak * 0.35 + uBaseColor * fres * 0.6;
+
+              gl_FragColor = vec4(lo.color + em, 1.0);
+            }
+          `
+          }
+        />
+      )
+
+    case "nature":
+      // A living planet: fbm continents over depth-shaded oceans, ice caps,
+      // drifting cloud layer, terrain relief, and specular glint on water.
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 0.5, 0.8).normalize() },
+            uAmbient: { value: 0.3 },
+            uBaseColor: { value: hexToVec3(accentColor || "#80e060") },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
+            void main() {
+              vLocal = position;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient;
+            uniform vec3 uLightDir, uBaseColor;
+            varying vec3 vN, vView, vLocal;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+            ${BUMP_GLSL}
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vLocal);
+
+              float elev = fbm(sp * 2.3) * 0.75 + fbm(sp * 5.5) * 0.25;
+              float seaLevel = 0.48;
+              float landMask = smoothstep(seaLevel, seaLevel + 0.015, elev);
+
+              // Ocean with depth falloff
+              float depth = smoothstep(seaLevel, 0.15, elev);
+              vec3 ocean = mix(vec3(0.05, 0.32, 0.42), vec3(0.008, 0.09, 0.18), depth);
+
+              // Land: beach -> lush accent lowland -> highland -> snow peak
+              float landH = clamp((elev - seaLevel) / (1.0 - seaLevel), 0.0, 1.0);
+              vec3 land = mix(vec3(0.75, 0.68, 0.5), uBaseColor * 0.55, smoothstep(0.0, 0.12, landH));
+              land = mix(land, vec3(0.42, 0.34, 0.24), smoothstep(0.3, 0.55, landH));
+              land = mix(land, vec3(0.92, 0.94, 0.96), smoothstep(0.6, 0.75, landH));
+              land *= 0.92 + 0.16 * fbm(sp * 14.0);
+
+              // Polar ice caps with a noisy edge
+              float cap = smoothstep(0.78, 0.86, abs(sp.y) + fbm(sp * 6.0) * 0.06);
+              vec3 surfCol = mix(ocean, land, landMask);
+              surfCol = mix(surfCol, vec3(0.93, 0.96, 1.0), cap);
+
+              // Cloud layer drifting independently of the surface
+              float ca = cos(time * 0.01), sa2 = sin(time * 0.01);
+              vec3 cp = vec3(sp.x * ca - sp.z * sa2, sp.y, sp.x * sa2 + sp.z * ca);
+              float cloud = smoothstep(0.52, 0.72, fbm(cp * 3.4 + vec3(0.0, time * 0.004, 0.0)));
+              surfCol = mix(surfCol, vec3(0.98), cloud * 0.85);
+
+              // Terrain relief on land, flattened under cloud
+              vec3 t1o, t2o; objTangents(sp, t1o, t2o);
+              float e = 0.03;
+              float hx = fbm((sp + t1o * e) * 2.3) * 0.75 + fbm((sp + t1o * e) * 5.5) * 0.25;
+              float hy = fbm((sp + t2o * e) * 2.3) * 0.75 + fbm((sp + t2o * e) * 5.5) * 0.25;
+              vec3 nb = bumpNormal(n, elev, hx, hy, e, 0.55 * landMask * (1.0 - cloud * 0.8));
+
+              // Specular glint on open water only
+              float specStr = mix(0.55, 0.04, max(landMask, cloud));
+              LightOut lo = shade(nb, v, l, surfCol, 90.0, specStr, 0.0, uAmbient);
+
+              // Atmosphere — soft blue limb
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.2);
+              vec3 em = vec3(0.25, 0.5, 0.9) * fres * 0.5;
 
               gl_FragColor = vec4(lo.color + em, 1.0);
             }

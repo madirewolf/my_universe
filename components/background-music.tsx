@@ -2,6 +2,7 @@
 
 import { Volume2, VolumeX } from "lucide-react"
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
+import { isSilentMode } from "./welcome-intro"
 
 interface BackgroundMusicProps {
   src?: string
@@ -32,6 +33,8 @@ export default function BackgroundMusic({
   }, [muted, volume])
 
   useEffect(() => {
+    // ?silent: no gesture-armed autoplay. The manual toggle still works.
+    if (isSilentMode()) return
     let disposed = false
 
     const tryPlay = () => {

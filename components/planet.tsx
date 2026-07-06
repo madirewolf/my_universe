@@ -40,6 +40,9 @@ interface PlanetProps {
   /** When provided (focused planet), filled with the live moon meshes so
    *  the moon→planet return can frame the exact moon it left through. */
   landmarkObjectsRef?: MutableRefObject<(THREE.Object3D | null)[]>
+  /** Reports the live planet body mesh (null on unmount) — used by history
+   *  navigation to re-dive into this planet like a real click. */
+  registerObject?: (object: THREE.Object3D | null) => void
   landmarks?: Landmark[]
 }
 
@@ -213,6 +216,7 @@ export default function Planet({
   latOffset = 0,
   onLandmarkClick,
   landmarkObjectsRef,
+  registerObject,
   landmarks: landmarksProp,
 }: PlanetProps) {
   // Backward compat: software-systems used to be implicitly cube-shaped via type
@@ -237,6 +241,14 @@ export default function Planet({
 
   const landmarks = landmarksProp ?? []
   const orbits = useMemo(() => landmarks.map((_, i) => moonOrbit(i)), [landmarks.length])
+
+  // Report the live body mesh for history-driven dives. Registered once on
+  // mount — the mesh instance is stable for the component's lifetime.
+  useEffect(() => {
+    registerObject?.(planetRef.current)
+    return () => registerObject?.(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Body radius scales between orbit (size) and detail (4) modes.
   const bodyRadius = isDetailView ? 4 : size

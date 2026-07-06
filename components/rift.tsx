@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react"
 import { useFrame } from "@react-three/fiber"
+import { Html } from "@react-three/drei"
 import * as THREE from "three"
 import type { Group, Mesh } from "three"
 import type { Universe } from "@/lib/constants"
@@ -88,6 +89,7 @@ export default function Rift({ onClick, universe, paused = false }: RiftProps) {
   const shardsGroupRef = useRef<Group>(null)
   const beamsGroupRef = useRef<Group>(null)
   const sliceMatRef = useRef<THREE.ShaderMaterial>(null)
+  const pulseRef = useRef<Mesh>(null)
   const [hovered, setHovered] = useState(false)
 
   // Effective time for gross rotations so pause/resume is smooth
@@ -192,7 +194,20 @@ export default function Rift({ onClick, universe, paused = false }: RiftProps) {
       beamsGroupRef.current.rotation.y = et * 0.18
       beamsGroupRef.current.rotation.x = Math.cos(et * 0.11) * 0.18
     }
+    if (pulseRef.current) {
+      // Attention pulse — an expanding, fading ring every few seconds so
+      // first-time visitors read the rift as interactive (it is the only
+      // way between universes now that the UI chip is gone). Quieter while
+      // hovered — the hover glow takes over.
+      const cycle = (wall % 4.2) / 4.2
+      pulseRef.current.scale.setScalar(5 + cycle * 9)
+      const mat = pulseRef.current.material as THREE.MeshBasicMaterial
+      mat.opacity = Math.max(0, 1 - cycle) * 0.28 * (hovered ? 0.35 : 1)
+    }
   })
+
+  const otherSide = universe === "professional" ? "Inner Universe" : "Public Universe"
+  const labelAccent = universe === "professional" ? "#4dd0c8" : "#80d0ff"
 
   return (
     <group ref={groupRef} position={position}>
@@ -215,6 +230,48 @@ export default function Rift({ onClick, universe, paused = false }: RiftProps) {
         <sphereGeometry args={[14, 16, 16]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} depthTest={false} />
       </mesh>
+
+      {/* Expanding attention pulse ring */}
+      <mesh ref={pulseRef}>
+        <ringGeometry args={[0.96, 1, 48]} />
+        <meshBasicMaterial
+          color={colors.b}
+          transparent
+          opacity={0.28}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Hover label — floats above the rift, styled like the old UI chip */}
+      {hovered && (
+        <Html position={[0, 12, 0]} center distanceFactor={60} zIndexRange={[90, 0]}>
+          <div
+            style={{
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 16px",
+              borderRadius: 10,
+              fontSize: 15,
+              fontWeight: 600,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              color: labelAccent,
+              background: `radial-gradient(circle at 10% 0%, ${labelAccent}20, transparent 48%), rgba(6, 12, 22, 0.72)`,
+              border: `1px solid ${labelAccent}40`,
+              boxShadow: `0 0 22px ${labelAccent}20, 0 12px 26px rgba(0,0,0,0.3)`,
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            Rift → {otherSide}
+          </div>
+        </Html>
+      )}
 
       {/* Wide ambient glow */}
       <mesh ref={haloRef}>

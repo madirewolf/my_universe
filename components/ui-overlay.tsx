@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, Instagram, Linkedin, Sparkles, Pause, Play } from "lucide-react"
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, FileDown, Home, Instagram, Linkedin, Mail, Pause, Play } from "lucide-react"
 import type { Landmark, PlanetEntry, Universe, UniverseConfig } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import BackgroundMusic from "./background-music"
@@ -40,7 +40,6 @@ interface UIOverlayProps {
   onPrevMoon: () => void
   onNextMoon: () => void
   onJoystick: (vel: { x: number; y: number }) => void
-  onEnterRift: () => void
   onTogglePause: () => void
 }
 
@@ -50,11 +49,6 @@ const GLASS_TONES = {
   default: { bg: "rgba(255, 255, 255, 0.028)", blur: 20 },
   strong: { bg: "rgba(255, 255, 255, 0.044)", blur: 22 },
 } as const
-
-const TITLE_GRADIENTS: Record<Universe, string> = {
-  professional: "linear-gradient(90deg, #00b8a9, #26c6b8, #4dd0c8, #80deea, #a7ffeb)",
-  personal: "linear-gradient(90deg, #ffb0e0, #d090ff, #80d8ff, #b0ffd0, #fff0a0)",
-}
 
 const ACCENT_GRADIENTS: Record<Universe, string> = {
   professional:
@@ -322,6 +316,52 @@ function NavDial({
   )
 }
 
+// Small labelled glass chip (Contact / Resume). Same glass recipe as
+// SocialLink but with a text label — these are the portfolio's conversion
+// buttons, so they get words, not just icons.
+function ContactChip({
+  href,
+  icon: Icon,
+  label,
+  download = false,
+}: {
+  href: string
+  icon: typeof Instagram
+  label: string
+  download?: boolean
+}) {
+  return (
+    <a
+      href={href}
+      {...(download
+        ? { download: "" }
+        : href.startsWith("http")
+          ? { target: "_blank", rel: "noopener noreferrer" }
+          : {})}
+      onPointerDown={(event) => {
+        event.stopPropagation()
+      }}
+      onTouchStart={(event) => {
+        event.stopPropagation()
+      }}
+      onClick={(event) => {
+        event.stopPropagation()
+      }}
+      className="relative z-[120] pointer-events-auto inline-flex items-center gap-2 text-[11px] font-medium tracking-[0.2em] uppercase px-3 py-2 rounded-lg transition-all duration-200
+        backdrop-blur-[18px] border text-white/60 hover:text-white/95 hover:border-white/30"
+      style={{
+        background: "linear-gradient(135deg, rgba(255,255,255,0.032), rgba(255,255,255,0.008) 50%, rgba(255,255,255,0.04))",
+        borderColor: "rgba(255,255,255,0.05)",
+        WebkitBackdropFilter: "blur(18px)",
+        boxShadow: "0 0 18px rgba(180,210,255,0.035), 0 12px 24px rgba(0,0,0,0.12)",
+      }}
+    >
+      <Icon size={13} />
+      {label}
+    </a>
+  )
+}
+
 function SocialLink({ href, icon: Icon }: { href: string; icon: typeof Instagram }) {
   return (
     <a
@@ -349,47 +389,6 @@ function SocialLink({ href, icon: Icon }: { href: string; icon: typeof Instagram
     >
       <Icon size={18} />
     </a>
-  )
-}
-
-function RiftHint({ universe, onClick }: { universe: Universe; onClick: () => void }) {
-  const accent = universe === "professional" ? "#4dd0c8" : "#80d0ff"
-  const otherSide = universe === "professional" ? "Inner Universe" : "Public Universe"
-  return (
-    <button
-      type="button"
-      onPointerDown={(event) => {
-        event.stopPropagation()
-      }}
-      onTouchStart={(event) => {
-        event.stopPropagation()
-      }}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        onClick()
-      }}
-      className="relative z-[120] pointer-events-auto inline-flex items-center gap-2 text-[11px] font-medium tracking-[0.2em] uppercase px-3 py-2 rounded-lg transition-all duration-200"
-      style={{
-        background: `radial-gradient(circle at 10% 0%, ${accent}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.035))`,
-        border: `1px solid ${accent}22`,
-        color: accent,
-        boxShadow: `0 0 18px ${accent}10, 0 12px 24px rgba(0,0,0,0.10)`,
-        backdropFilter: "blur(18px)",
-        WebkitBackdropFilter: "blur(18px)",
-      }}
-      onMouseEnter={e => {
-        ;(e.currentTarget as HTMLElement).style.background = `radial-gradient(circle at 10% 0%, ${accent}26, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.048), rgba(255,255,255,0.01) 52%, rgba(255,255,255,0.052))`
-        ;(e.currentTarget as HTMLElement).style.borderColor = `${accent}42`
-      }}
-      onMouseLeave={e => {
-        ;(e.currentTarget as HTMLElement).style.background = `radial-gradient(circle at 10% 0%, ${accent}18, transparent 48%), linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.007) 52%, rgba(255,255,255,0.035))`
-        ;(e.currentTarget as HTMLElement).style.borderColor = `${accent}22`
-      }}
-    >
-      <Sparkles size={12} />
-      Rift &rarr; {otherSide}
-    </button>
   )
 }
 
@@ -599,43 +598,9 @@ export default function UIOverlay({
   onPrevMoon,
   onNextMoon,
   onJoystick,
-  onEnterRift,
   onTogglePause,
 }: UIOverlayProps) {
   const isMobile = useMediaQuery(MOBILE_QUERY)
-  const [glitchText, setGlitchText] = useState(config.glitchSubtitle)
-
-  // Reset the glitch text whenever the universe changes
-  useEffect(() => {
-    setGlitchText(config.glitchSubtitle)
-  }, [config.glitchSubtitle])
-
-  useEffect(() => {
-    if (selectedPlanet !== null) return
-
-    const glitchChars = "!<>-_\\/[]{}—=+*^?#________"
-    const originalText = config.glitchSubtitle
-    let snapBackTimeout: ReturnType<typeof setTimeout> | null = null
-
-    const glitchInterval = setInterval(() => {
-      if (Math.random() > 0.7) {
-        const glitched = originalText
-          .split("")
-          .map(char =>
-            Math.random() > 0.6 ? glitchChars[Math.floor(Math.random() * glitchChars.length)] : char,
-          )
-          .join("")
-        setGlitchText(glitched)
-        if (snapBackTimeout) clearTimeout(snapBackTimeout)
-        snapBackTimeout = setTimeout(() => setGlitchText(originalText), 50 + Math.random() * 100)
-      }
-    }, 200)
-
-    return () => {
-      clearInterval(glitchInterval)
-      if (snapBackTimeout) clearTimeout(snapBackTimeout)
-    }
-  }, [selectedPlanet, config.glitchSubtitle])
 
   const planets = config.planets
   const selected = selectedPlanet !== null ? planets[selectedPlanet] : null
@@ -662,72 +627,21 @@ export default function UIOverlay({
     return () => window.removeEventListener("keydown", onKey)
   }, [mode, onNextMoon, onPrevMoon])
 
-  const titleGradient = TITLE_GRADIENTS[universe]
   const accentGradient = ACCENT_GRADIENTS[universe]
   const eyebrowColor = EYEBROW_COLORS[universe]
 
   return (
     <>
-      {/* Title (system view) */}
+      {/* Contact CTA (system view) — the portfolio's conversion corner */}
       {mode === "system" && (
         <div
           className={cn(
-            "absolute pointer-events-none z-20",
-            isMobile ? "top-3 left-3 right-3" : "top-8 left-8",
+            "absolute z-20 flex gap-2 pointer-events-none",
+            isMobile ? "top-3 left-3" : "top-8 left-8",
           )}
         >
-          <GlassPanel tone="whisper" className="overflow-hidden">
-            <div className={cn(isMobile ? "px-4 py-3" : "px-6 py-5")}>
-              <div
-                className={cn(
-                  "font-display font-bold tracking-tight mb-1",
-                  isMobile ? "text-xl" : "text-3xl",
-                )}
-                style={{
-                  color: "rgba(255,255,255,0.78)",
-                  textShadow:
-                    "0 0 18px rgba(255,255,255,0.16), 0 1px 1px rgba(255,255,255,0.22), 0 14px 34px rgba(0,0,0,0.24)",
-                }}
-              >
-                Welcome to my{" "}
-                <span
-                  key={universe}
-                  className="inline-block font-black bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.54) 34%, rgba(255,255,255,0.88) 58%, rgba(255,255,255,0.48) 100%), ${titleGradient}`,
-                    backgroundBlendMode: "screen",
-                    backgroundSize: "200% 100%",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    filter: "drop-shadow(0 0 14px rgba(255,255,255,0.14)) drop-shadow(0 10px 26px rgba(0,0,0,0.26))",
-                    animation: "wave 3s ease-in-out infinite, gradient 8s linear infinite",
-                  }}
-                >
-                  {config.label}
-                </span>
-              </div>
-
-              <div
-                className="font-sans font-medium text-sm"
-                style={{
-                  color: "rgba(255,255,255,0.52)",
-                  textShadow: "0 0 12px rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.22)",
-                }}
-              >
-                {universe === "professional" && <>or rather my{" "}</>}
-                <span
-                  className="glitch-text relative inline-block font-bold"
-                  data-text={glitchText}
-                >
-                  {glitchText}
-                </span>
-              </div>
-
-              <div className={cn(isMobile ? "mt-2" : "mt-4")}>
-                <RiftHint universe={universe} onClick={onEnterRift} />
-              </div>
-            </div>
-          </GlassPanel>
+          <ContactChip href="mailto:mohammad.abu.daqer@gmail.com" icon={Mail} label="Contact" />
+          <ContactChip href="/resume.pdf" icon={FileDown} label="Resume" download />
         </div>
       )}
 
@@ -1134,58 +1048,6 @@ export default function UIOverlay({
           92% { transform: translate(3px, -1px); opacity: 0.9; }
           94% { transform: translate(-1px, 2px); opacity: 0.75; }
           96% { transform: translate(0, 0); opacity: 1; }
-        }
-
-        /* Universe title motion + gradient */
-        @keyframes wave {
-          0%, 100% { transform: translateY(0); }
-          50%      { transform: translateY(-5px); }
-        }
-        @keyframes gradient {
-          0%   { background-position: 0% 50%; }
-          100% { background-position: 200% 50%; }
-        }
-
-        /* Glitch visuals */
-        .glitch-text {
-          color: #00ff41;
-          text-shadow: 0 0 5px #00ff41;
-        }
-        .glitch-text::before,
-        .glitch-text::after {
-          content: attr(data-text);
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-        }
-        .glitch-text::before {
-          animation: glitch-1 0.3s infinite;
-          color: #ff00ff;
-          z-index: -1;
-        }
-        .glitch-text::after {
-          animation: glitch-2 0.3s infinite;
-          color: #00ffff;
-          z-index: -2;
-        }
-
-        @keyframes glitch-1 {
-          0%   { transform: translate(0); }
-          20%  { transform: translate(-2px, 2px); }
-          40%  { transform: translate(-2px, -2px); }
-          60%  { transform: translate(2px, 2px); }
-          80%  { transform: translate(2px, -2px); }
-          100% { transform: translate(0); }
-        }
-        @keyframes glitch-2 {
-          0%   { transform: translate(0); }
-          20%  { transform: translate(2px, -2px); }
-          40%  { transform: translate(2px, 2px); }
-          60%  { transform: translate(-2px, -2px); }
-          80%  { transform: translate(-2px, 2px); }
-          100% { transform: translate(0); }
         }
       `}</style>
     </>

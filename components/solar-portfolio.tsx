@@ -5,7 +5,7 @@ import { OrbitControls, Environment } from "@react-three/drei"
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react"
 import * as THREE from "three"
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
-import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type PlanetEntry, type Universe } from "@/lib/constants"
+import { LIGHTING, UNIVERSE_CONFIG, type Landmark, type PlanetEntry, type Universe, type UniverseConfig } from "@/lib/constants"
 import SolarSystem from "./solar-system"
 import StarField from "./star-field"
 import StarNest from "./star-nest"
@@ -21,6 +21,8 @@ import RiftWarpOverlay, {
 } from "./rift-warp-overlay"
 import MoonView from "./moon-view"
 import UIOverlay from "./ui-overlay"
+import WelcomeIntro from "./welcome-intro"
+import BootScreen from "./boot-screen"
 import { focusedCrystalRadius } from "./planet"
 
 type Mode = "system" | "planet" | "moon"
@@ -214,11 +216,51 @@ function findLandmarkIndex(landmarks: Landmark[], landmark: Landmark | null): nu
   return landmarks.findIndex((candidate) => landmarkKey(candidate) === key)
 }
 
+// ── Deep links ──────────────────────────────────────────────────────────
+// URLs carry readable slugs (?universe=personal&planet=nyx&moon=luna).
+// Numeric params are still accepted so old links keep working.
+
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+}
+
+function findPlanetIndexByParam(config: UniverseConfig, param: string | null): number {
+  if (param === null) return -1
+  const bySlug = config.planets.findIndex((p) => slugify(p.name) === param)
+  if (bySlug >= 0) return bySlug
+  const idx = Number.parseInt(param, 10)
+  return Number.isInteger(idx) && config.planets[idx] ? idx : -1
+}
+
+function findMoonIndexByParam(planet: PlanetEntry, param: string | null): number {
+  if (param === null) return -1
+  const bySlug = planet.landmarks.findIndex((m) => slugify(m.name) === param)
+  if (bySlug >= 0) return bySlug
+  const idx = Number.parseInt(param, 10)
+  return Number.isInteger(idx) && planet.landmarks[idx] ? idx : -1
+}
+
 function initialPlanetPosition(planet: PlanetEntry): THREE.Vector3 {
   const position = new THREE.Vector3(planet.distance, 0, 0)
   position.applyAxisAngle(new THREE.Vector3(0, 1, 0), planet.phase ?? 0)
   position.applyAxisAngle(new THREE.Vector3(1, 0, 0), planet.tilt ?? 0)
   return position
+}
+
+// Signals the boot screen once the canvas has produced a handful of real
+// frames — a completed frame means the shader-compile stall is behind us.
+function BootReady({ onReady }: { onReady: () => void }) {
+  const frames = useRef(0)
+  const fired = useRef(false)
+  useFrame(() => {
+    if (fired.current) return
+    frames.current += 1
+    if (frames.current >= 5) {
+      fired.current = true
+      onReady()
+    }
+  })
+  return null
 }
 
 function CameraController({
@@ -763,6 +805,9 @@ export default function SolarPortfolio() {
   // boundary (via CameraController's onSwapUniverse / onStageOut /
   // onCinematicComplete callbacks) so the DOM warp overlay can react to it.
   const [riftStage, setRiftStage] = useState<RiftStage>("idle")
+  // False until the canvas has rendered real frames; drives the boot screen
+  // fade and holds the welcome splash so they never overlap.
+  const [booted, setBooted] = useState(false)
   // Per-frame stage state for the cinematic. Mutated in place by
   // CameraController inside useFrame — a ref avoids per-frame React renders.
   const riftState = useRef<RiftCinematicState>({
@@ -798,6 +843,18 @@ export default function SolarPortfolio() {
   // by Planet. Used by the moon→planet return to arrive framing the exact
   // moon we left through (the data crystal's twin).
   const focusedMoonObjects = useRef<(THREE.Object3D | null)[]>([])
+  // Live planet body meshes of the ACTIVE universe, registered by Planet.
+  // Lets browser back/forward re-dive into a planet with the real match cut
+  // (the object is tracked live, exactly like a click).
+  const planetObjectsRef = useRef<(THREE.Object3D | null)[]>([])
+  // True while a navigation was initiated by popstate (browser back/forward)
+  // — suppresses the next history push so we don't grow the stack while
+  // walking it. Consumed by replaceQuery / handleSwapUniverse.
+  const popNavRef = useRef(false)
+  // Deep history jump straight into a moon (e.g. forward from system view):
+  // dive to the planet first, then this parks the moon index until the
+  // planet arrival settles and its moon meshes exist.
+  const pendingMoonRef = useRef<number | null>(null)
   // Joystick velocity from the navigation dial (-1..1 each axis). When non-zero
   // a RAF loop integrates it into planetRotation for continuous rotation.
   const joystickRef = useRef({ x: 0, y: 0 })
@@ -854,21 +911,23 @@ export default function SolarPortfolio() {
     if (typeof window === "undefined") return
 
     const params = new URLSearchParams(window.location.search)
-    const universeParam = params.get("universe")
-    const planetParam = params.get("planet")
-    const moonParam = params.get("moon")
-    if (!universeParam || planetParam === null) return
-    if (universeParam !== "professional" && universeParam !== "personal") return
+    const targetUniverse: Universe =
+      params.get("universe") === "personal" ? "personal" : "professional"
+    const cfg = UNIVERSE_CONFIG[targetUniverse]
+    const planetIndex = findPlanetIndexByParam(cfg, params.get("planet"))
 
-    const planetIndex = Number.parseInt(planetParam, 10)
-    const targetPlanet = UNIVERSE_CONFIG[universeParam].planets[planetIndex]
-    if (!targetPlanet) return
+    if (planetIndex < 0) {
+      // Universe-only deep link (?universe=personal) — no dive needed.
+      if (targetUniverse !== "professional") setUniverse(targetUniverse)
+      return
+    }
 
+    const targetPlanet = cfg.planets[planetIndex]
     const planetPosition = initialPlanetPosition(targetPlanet)
-    const moonIndex = moonParam === null ? -1 : Number.parseInt(moonParam, 10)
-    const targetMoon = moonIndex >= 0 ? targetPlanet.landmarks[moonIndex] ?? null : null
+    const moonIndex = findMoonIndexByParam(targetPlanet, params.get("moon"))
+    const targetMoon = moonIndex >= 0 ? targetPlanet.landmarks[moonIndex] : null
 
-    setUniverse(universeParam)
+    setUniverse(targetUniverse)
     setSelectedPlanet(planetIndex)
     setFocusTarget([planetPosition.x, planetPosition.y, planetPosition.z])
     setSelectedLandmark(targetMoon)
@@ -914,23 +973,43 @@ export default function SolarPortfolio() {
     selected && selectedLandmark ? findLandmarkIndex(selected.landmarks, selectedLandmark) : -1
   const landmarkSeed = landmarkIndex >= 0 ? landmarkIndex * 13.7 + 7 : 0
 
-  const replaceQuery = useCallback((planetIndex: number | null, moonIndex?: number | null) => {
-    if (typeof window === "undefined") return
+  const replaceQuery = useCallback(
+    (planetIndex: number | null, moonIndex?: number | null, push = false) => {
+      if (typeof window === "undefined") return
 
-    const url = new URL(window.location.href)
-    if (planetIndex === null) {
+      const url = new URL(window.location.href)
+      const keepSilent = url.searchParams.has("silent")
       url.search = ""
-    } else {
-      url.searchParams.set("universe", universe)
-      url.searchParams.set("planet", String(planetIndex))
-      if (moonIndex === undefined || moonIndex === null) {
-        url.searchParams.delete("moon")
-      } else {
-        url.searchParams.set("moon", String(moonIndex))
+      if (keepSilent) url.searchParams.set("silent", "")
+      // Professional system view is the clean "/" URL; everything else is
+      // spelled out with slugs.
+      if (universe === "personal") url.searchParams.set("universe", universe)
+      if (planetIndex !== null) {
+        const planet = UNIVERSE_CONFIG[universe].planets[planetIndex]
+        if (planet) {
+          url.searchParams.set("universe", universe)
+          url.searchParams.set("planet", slugify(planet.name))
+          const moon =
+            moonIndex !== undefined && moonIndex !== null
+              ? planet.landmarks[moonIndex]
+              : null
+          if (moon) url.searchParams.set("moon", slugify(moon.name))
+        }
       }
-    }
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
-  }, [universe])
+
+      // popstate-driven navigation must not grow the history stack.
+      const shouldPush = push && !popNavRef.current
+      if (push && popNavRef.current) popNavRef.current = false
+
+      const href = `${url.pathname}${url.search}${url.hash}`
+      if (shouldPush && url.search !== window.location.search) {
+        window.history.pushState(null, "", href)
+      } else {
+        window.history.replaceState(null, "", href)
+      }
+    },
+    [universe],
+  )
 
   /**
    * Kick off a mode-cut transition. `targetObj` (or the origin) is the
@@ -987,13 +1066,16 @@ export default function SolarPortfolio() {
     if (!manualPaused && !focusPaused) setFocusPaused(true)
     setFocusTarget([target.x, target.y, target.z])
     setSelectedPlanet(idx)
-    replaceQuery(idx, null)
+    replaceQuery(idx, null, true)
     setPlanetRotation({ lon: 0, lat: 0 })
     setIsTransitioning(true)
   }
 
   const handleLandmarkClick = (landmark: Landmark, object: THREE.Object3D) => {
     const moonIndex = selected ? findLandmarkIndex(selected.landmarks, landmark) : -1
+    // History entry lands at interaction time; the commit below only
+    // re-confirms the same URL (replace) once the cut actually happens.
+    if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex, true)
     const moonSettle = SETTLE_POS.moon(isMobile)
     // Pan from the focused planet to the clicked moon, then make a small
     // arrival adjustment into the moon scene instead of a big in/out lurch.
@@ -1013,15 +1095,10 @@ export default function SolarPortfolio() {
     })
   }
 
-  const handleMoonStep = useCallback((direction: -1 | 1) => {
-    if (!selected || !selectedLandmark || selected.landmarks.length === 0) return
-
-    const currentIndex = findLandmarkIndex(selected.landmarks, selectedLandmark)
-    if (currentIndex < 0) return
-
-    const nextIndex =
-      (currentIndex + direction + selected.landmarks.length) % selected.landmarks.length
+  const handleMoonJump = useCallback((nextIndex: number) => {
+    if (!selected || selected.landmarks.length === 0) return
     const next = selected.landmarks[nextIndex]
+    if (!next || next === selectedLandmark) return
     // Dive through the data crystal, come out at the next moon's crystal.
     // Closer cut (crystal fills the whole frame) and snappier than the
     // generic mode-cut — cycling between moons should feel quick. cutDist
@@ -1042,10 +1119,22 @@ export default function SolarPortfolio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replaceQuery, selected, selectedLandmark, selectedPlanet, isMobile])
 
+  const handleMoonStep = useCallback((direction: -1 | 1) => {
+    if (!selected || !selectedLandmark || selected.landmarks.length === 0) return
+
+    const currentIndex = findLandmarkIndex(selected.landmarks, selectedLandmark)
+    if (currentIndex < 0) return
+
+    const nextIndex =
+      (currentIndex + direction + selected.landmarks.length) % selected.landmarks.length
+    handleMoonJump(nextIndex)
+  }, [handleMoonJump, selected, selectedLandmark])
+
   const handlePrevMoon = useCallback(() => handleMoonStep(-1), [handleMoonStep])
   const handleNextMoon = useCallback(() => handleMoonStep(1), [handleMoonStep])
 
   const handleBackFromMoon = () => {
+    if (selectedPlanet !== null) replaceQuery(selectedPlanet, null, true)
     // Exact mirror of the way in: dive back INTO the data crystal until it
     // fills the frame, cut behind it to its orbiting twin filling the frame
     // the same way, then pull back from the moon while the gaze glides onto
@@ -1084,7 +1173,7 @@ export default function SolarPortfolio() {
     if (selectedPlanet === null) setFocusTarget(null)
     setReleaseFocusPauseOnSettle(true)
     setHoveredPlanet(null)
-    replaceQuery(null)
+    replaceQuery(null, undefined, true)
     setIsTransitioning(true)
   }
 
@@ -1114,7 +1203,18 @@ export default function SolarPortfolio() {
   }
 
   const handleSwapUniverse = () => {
-    setUniverse((u) => (u === "professional" ? "personal" : "professional"))
+    const next: Universe = universe === "professional" ? "personal" : "professional"
+    setUniverse(next)
+    // History entry for the universe switch (unless we're already replaying
+    // history — then just leave the URL the browser restored).
+    if (typeof window !== "undefined") {
+      if (popNavRef.current) {
+        popNavRef.current = false
+      } else {
+        const search = next === "personal" ? "?universe=personal" : ""
+        window.history.pushState(null, "", `${window.location.pathname}${search}`)
+      }
+    }
     setIsTransitioning(true)
     setRiftStage("peak")
     // riftState.ready stays false here. RiftCompileGate (rendered inside
@@ -1123,6 +1223,103 @@ export default function SolarPortfolio() {
     // programs are actually compiled. The overlay + camera 'peak' stage
     // hold until then, so we never transition into a half-rendered scene.
   }
+
+  // Browser back/forward: parse the restored URL and replay it through the
+  // real navigation handlers, so history moves use the same match cuts and
+  // cinematics as clicks. Rebound every render on purpose — the handlers
+  // close over current state. Busy transitions ignore the event (rare; the
+  // URL self-corrects on the next navigation).
+  useEffect(() => {
+    const onPopState = () => {
+      if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+      if (isTransitioning) return
+
+      const params = new URLSearchParams(window.location.search)
+      const targetUniverse: Universe =
+        params.get("universe") === "personal" ? "personal" : "professional"
+
+      if (targetUniverse !== universe) {
+        // Crossing universes replays the rift; deeper targets in the other
+        // universe settle at its system view (acceptable simplification).
+        popNavRef.current = true
+        pendingMoonRef.current = null
+        handleEnterRift()
+        return
+      }
+
+      const cfg = UNIVERSE_CONFIG[universe]
+      const pIdx = findPlanetIndexByParam(cfg, params.get("planet"))
+      const mIdx = pIdx >= 0 ? findMoonIndexByParam(cfg.planets[pIdx], params.get("moon")) : -1
+
+      if (pIdx < 0) {
+        // Target: system view
+        pendingMoonRef.current = null
+        if (mode !== "system") {
+          popNavRef.current = true
+          handleBack()
+        }
+        return
+      }
+
+      if (selectedPlanet !== pIdx) {
+        if (mode !== "system") {
+          // Planet-to-planet history jump: return home first; the next
+          // popstate-equivalent step re-enters via pendingMoonRef? No —
+          // history only moves one entry per event, so settle for home.
+          popNavRef.current = true
+          pendingMoonRef.current = null
+          handleBack()
+          return
+        }
+        const obj = planetObjectsRef.current[pIdx]
+        if (!obj) return
+        popNavRef.current = true
+        pendingMoonRef.current = mIdx >= 0 ? mIdx : null
+        handlePlanetClick(pIdx, obj)
+        return
+      }
+
+      // Same planet as current
+      if (mIdx < 0) {
+        if (mode === "moon") {
+          popNavRef.current = true
+          handleBackFromMoon()
+        }
+        return
+      }
+      if (mode === "planet") {
+        const landmark = cfg.planets[pIdx].landmarks[mIdx]
+        const moonObj = focusedMoonObjects.current[mIdx]
+        if (landmark && moonObj) {
+          popNavRef.current = true
+          handleLandmarkClick(landmark, moonObj)
+        }
+        return
+      }
+      if (mode === "moon" && landmarkIndex !== mIdx) {
+        popNavRef.current = true
+        handleMoonJump(mIdx)
+      }
+    }
+
+    window.addEventListener("popstate", onPopState)
+    return () => window.removeEventListener("popstate", onPopState)
+  })
+
+  // Second leg of a deep history jump (system → planet → moon): once the
+  // planet arrival settles and its moon meshes are registered, dive on.
+  useEffect(() => {
+    if (pendingMoonRef.current === null) return
+    if (mode !== "planet" || isTransitioning) return
+    if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+    const mIdx = pendingMoonRef.current
+    const landmark = selected?.landmarks[mIdx]
+    const moonObj = focusedMoonObjects.current[mIdx]
+    if (!landmark || !moonObj) return
+    pendingMoonRef.current = null
+    popNavRef.current = true // still history-driven — no new entry
+    handleLandmarkClick(landmark, moonObj)
+  })
 
   const handleStageOut = () => {
     setRiftStage("out")
@@ -1149,6 +1346,7 @@ export default function SolarPortfolio() {
       >
         <Suspense fallback={null}>
           <RenderHeartbeat />
+          <BootReady onReady={() => setBooted(true)} />
           <StarNest
             // Personal universe stays soft pastel so the fractal doesn't fight
             // the bright pink/violet background. Public universe is pushed
@@ -1211,6 +1409,7 @@ export default function SolarPortfolio() {
                   focusedPlanet={(mode !== "system" || returningToSystem) && isActive ? selectedPlanet : null}
                   planetRotation={planetRotation}
                   focusedLandmarkObjects={isActive ? focusedMoonObjects : undefined}
+                  planetObjectsRef={isActive ? planetObjectsRef : undefined}
                   onSunClick={toggleManualPause}
                   onPlanetClick={handlePlanetClick}
                   onLandmarkClick={handleLandmarkClick}
@@ -1284,8 +1483,22 @@ export default function SolarPortfolio() {
         onPrevMoon={handlePrevMoon}
         onNextMoon={handleNextMoon}
         onJoystick={setJoystick}
-        onEnterRift={handleEnterRift}
       />
+
+      {/* One-shot welcome splash (replaces the old top-left banner) —
+          transparent overlay that fades in on load, speaks the welcome
+          line, and fades away. Dismissed early if the visitor dives into
+          a planet or the rift before it finishes. */}
+      <WelcomeIntro
+        universe={universe}
+        config={config}
+        start={booted}
+        dismiss={mode !== "system" || riftStage !== "idle"}
+      />
+
+      {/* Boot cover — opaque over the initial shader-compile stall, fades
+          once BootReady reports rendered frames. Above everything. */}
+      <BootScreen done={booted} />
     </div>
   )
 }

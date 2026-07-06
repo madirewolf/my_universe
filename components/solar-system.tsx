@@ -16,6 +16,9 @@ interface SolarSystemProps {
   /** Filled with the focused planet's orbiting moon meshes (for the
    *  moon→planet return's match-cut framing). */
   focusedLandmarkObjects?: MutableRefObject<(THREE.Object3D | null)[]>
+  /** Filled with each planet's live body mesh — lets history navigation
+   *  (browser back/forward) re-dive into a planet like a real click. */
+  planetObjectsRef?: MutableRefObject<(THREE.Object3D | null)[]>
   onSunClick?: () => void
   /** object = the clicked planet mesh — tracked live during the dive. */
   onPlanetClick: (planetIndex: number, object: THREE.Object3D) => void
@@ -30,6 +33,7 @@ export default function SolarSystem({
   focusedPlanet = null,
   planetRotation = { lon: 0, lat: 0 },
   focusedLandmarkObjects,
+  planetObjectsRef,
   onSunClick,
   onPlanetClick,
   onLandmarkClick,
@@ -66,6 +70,13 @@ export default function SolarSystem({
           lonOffset={focusedPlanet === index ? planetRotation.lon : 0}
           latOffset={focusedPlanet === index ? planetRotation.lat : 0}
           landmarkObjectsRef={focusedPlanet === index ? focusedLandmarkObjects : undefined}
+          registerObject={
+            planetObjectsRef
+              ? (obj) => {
+                  planetObjectsRef.current[index] = obj
+                }
+              : undefined
+          }
           onLandmarkClick={onLandmarkClick}
           onClick={(e) => {
             e.stopPropagation()
