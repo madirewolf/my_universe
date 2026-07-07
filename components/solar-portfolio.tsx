@@ -808,6 +808,14 @@ export default function SolarPortfolio() {
   // False until the canvas has rendered real frames; drives the boot screen
   // fade and holds the welcome splash so they never overlap.
   const [booted, setBooted] = useState(false)
+
+  // Safety hatch: if the canvas never reports frames (WebGL blocked, GPU
+  // driver trouble, tab kept in the background), don't trap the visitor on
+  // the boot screen forever.
+  useEffect(() => {
+    const t = setTimeout(() => setBooted(true), 18000)
+    return () => clearTimeout(t)
+  }, [])
   // Per-frame stage state for the cinematic. Mutated in place by
   // CameraController inside useFrame — a ref avoids per-frame React renders.
   const riftState = useRef<RiftCinematicState>({
