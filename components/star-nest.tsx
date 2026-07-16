@@ -17,7 +17,17 @@ interface StarNestProps {
   saturation?: number
   /** Hue tint baked into the final color (default white = no tint). */
   tint?: [number, number, number]
+  /** Deterministic post-boot showcase: when this flips true, the fractal's
+   *  clock resets to t=0 (identical opening sequence every load — however
+   *  long the shader-compile stall lasted) and brightness is boosted for a
+   *  fixed window so the star nest unmistakably announces itself. */
+  showcase?: boolean
 }
+
+// Showcase choreography (seconds / multiplier).
+const SHOWCASE_HOLD = 4.0
+const SHOWCASE_EASE = 1.6
+const SHOWCASE_BOOST = 2.1
 
 const VERT = /* glsl */ `
   varying vec2 vUv;
@@ -109,6 +119,7 @@ export default function StarNest({
   brightness = 0.0015,
   saturation = 0.85,
   tint = [1, 1, 1],
+  showcase = false,
 }: StarNestProps) {
   const { camera, size } = useThree()
   const matRef = useRef<ShaderMaterial>(null)
@@ -128,6 +139,9 @@ export default function StarNest({
   const ENERGY_HALF_LIFE = 3.5 // seconds for the boost to decay halfway
   const energyRef = useRef(ENERGY_START)
   const prevQuatRef = useRef<THREE.Quaternion | null>(null)
+  // Set on the first RENDERED frame after `showcase` flips true, so the
+  // 4-second window never burns while the tab isn't painting.
+  const showcaseStartRef = useRef<number | null>(null)
 
   useFrame(() => {
     if (!matRef.current) return
@@ -136,6 +150,15 @@ export default function StarNest({
     const prev = prevFrameRef.current ?? now
     const dt = Math.min(now - prev, 0.05)
     prevFrameRef.current = now
+
+    if (showcase && showcaseStartRef.current === null) {
+      // Boot just finished: reset the fractal clock — every load opens on
+      // the exact same (dense, bright) sequence regardless of how long the
+      // shader-compile stall chewed through it.
+      showcaseStartRef.current = now
+      timeRef.current = 0
+      energyRef.current = ENERGY_START
+    }
 
     // Camera angular motion this frame (drag, damping, autorotate) → kick.
     const quat = camera.quaternion
@@ -161,7 +184,21 @@ export default function StarNest({
     )
     smoothMouseRef.current.lerp(targetMouseRef.current, 1 - Math.pow(0.04, dt * 60))
 
+    // Showcase brightness: full boost for SHOWCASE_HOLD seconds after boot,
+    // then ease back down to the ambient level.
+    let boost = 1
+    if (showcaseStartRef.current !== null) {
+      const el = now - showcaseStartRef.current
+      if (el < SHOWCASE_HOLD) {
+        boost = SHOWCASE_BOOST
+        energyRef.current = Math.max(energyRef.current, 2.2)
+      } else {
+        boost = 1 + Math.max(0, 1 - (el - SHOWCASE_HOLD) / SHOWCASE_EASE) * (SHOWCASE_BOOST - 1)
+      }
+    }
+
     matRef.current.uniforms.uTime.value = timeRef.current
+    matRef.current.uniforms.uBrightness.value = brightness * boost
     matRef.current.uniforms.uResolution.value.set(size.width, size.height)
     matRef.current.uniforms.uMouse.value.copy(smoothMouseRef.current)
   })

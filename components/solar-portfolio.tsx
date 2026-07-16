@@ -159,6 +159,11 @@ interface ModeCutState {
    *  symmetric across the cut so both scenes render under the same FOV. */
   fovDip: number
   baseFov: number
+  /** Fade cut (planet→moon): the dive is kept, but a DOM veil fades to
+   *  black at its peak, the camera teleports straight to the settle frame
+   *  behind it (no arrival flight, no spin), and the veil lifts while the
+   *  moon diorama materializes. */
+  fade: boolean
   /** Arrival arc (phase "in"): swing from the arrival direction to the
    *  settle direction around the gaze anchor. Radius keeps the cut's
    *  outward momentum (ease-out) while the angle ramps in-out — kills the
@@ -288,6 +293,7 @@ function CameraController({
   setIsTransitioning,
   riftState,
   modeWarp,
+  modeFadeRef,
   onSwapUniverse,
   onStageOut,
   onCinematicComplete,
@@ -301,6 +307,7 @@ function CameraController({
   setIsTransitioning: (v: boolean) => void
   riftState: MutableRefObject<RiftCinematicState>
   modeWarp: MutableRefObject<ModeCutState>
+  modeFadeRef: MutableRefObject<HTMLDivElement | null>
   onSwapUniverse: () => void
   onStageOut: () => void
   onCinematicComplete: () => void
@@ -488,6 +495,13 @@ function CameraController({
           pcam.updateProjectionMatrix()
         }
 
+        // Fade cut: the veil closes over the dive's last stretch, fully
+        // dark exactly at the cut.
+        if (mw.fade && modeFadeRef.current) {
+          const fadeK = easeInOutCubic(THREE.MathUtils.clamp((kt - 0.55) / 0.45, 0, 1))
+          modeFadeRef.current.style.opacity = fadeK.toFixed(3)
+        }
+
         if (t >= mw.outDur) {
           // Swap the scene behind the object (big→small: it fills the
           // frame; small→big: everything is tiny). Camera HOLDS here until
@@ -518,6 +532,24 @@ function CameraController({
         ) {
           mw.phase = "in"
           mw.start = state.clock.elapsedTime
+
+          if (mw.fade) {
+            // Fade cut: behind the fully-dark veil, land DIRECTLY on the
+            // settle frame — no arrival flight, so no spin. The "in" phase
+            // becomes a gentle 8% drift-in while the veil lifts and the
+            // moon diorama materializes.
+            mw.lookAtPos.copy(mw.settleLook)
+            _dir2.copy(mw.settlePos).sub(mw.settleLook)
+            mw.toLen = Math.max(_dir2.length(), 1e-4)
+            _dir2.divideScalar(mw.toLen)
+            mw.arcAngle = 0
+            mw.arcAxis.set(0, 1, 0)
+            mw.fromPos.copy(mw.settleLook).addScaledVector(_dir2, mw.toLen * 1.08)
+            camera.position.copy(mw.fromPos)
+            syncCameraLookAt(camera, controls, mw.settleLook)
+            return
+          }
+
           // Orientation-continuous arrival: keep the camera's direction
           // RELATIVE to the old anchor, re-applied around the new anchor.
           // Diving into a moon from the side cuts to the data crystal seen
@@ -575,6 +607,12 @@ function CameraController({
           pcam.updateProjectionMatrix()
         }
 
+        // Fade cut: lift the veil while the moon diorama materializes.
+        if (mw.fade && modeFadeRef.current) {
+          const lift = 1 - easeInOutCubic(THREE.MathUtils.clamp(rawT / 0.85, 0, 1))
+          modeFadeRef.current.style.opacity = lift.toFixed(3)
+        }
+
         if (rawT >= 1) {
           mw.phase = "idle"
           mw.start = -1
@@ -582,6 +620,10 @@ function CameraController({
           if (mw.fovDip > 0 && pcam.isPerspectiveCamera) {
             pcam.fov = mw.baseFov
             pcam.updateProjectionMatrix()
+          }
+          if (mw.fade && modeFadeRef.current) {
+            modeFadeRef.current.style.opacity = "0"
+            mw.fade = false
           }
         }
       }
@@ -880,6 +922,16 @@ export default function SolarPortfolio() {
     const t = setTimeout(() => setBooted(true), 18000)
     return () => clearTimeout(t)
   }, [])
+
+  // Star Nest showcase trigger — armed once the boot veil has fully faded
+  // (950ms ≈ BootScreen's fade), so the deterministic 4-second bloom starts
+  // exactly when the loading screen is gone, not while it's still lifting.
+  const [bgShowcase, setBgShowcase] = useState(false)
+  useEffect(() => {
+    if (!booted) return
+    const t = setTimeout(() => setBgShowcase(true), 950)
+    return () => clearTimeout(t)
+  }, [booted])
   // Per-frame stage state for the cinematic. Mutated in place by
   // CameraController inside useFrame — a ref avoids per-frame React renders.
   const riftState = useRef<RiftCinematicState>({
@@ -908,10 +960,14 @@ export default function SolarPortfolio() {
     commit: null,
     fovDip: 0,
     baseFov: 60,
+    fade: false,
     arcAxis: new THREE.Vector3(0, 1, 0),
     arcAngle: 0,
     toLen: 1,
   })
+  // DOM veil for fade cuts — mutated directly from CameraController's
+  // useFrame (no React re-renders mid-transition).
+  const modeFadeRef = useRef<HTMLDivElement>(null)
   const systemGroupRefs = useRef<Record<Universe, THREE.Group | null>>({
     professional: null,
     personal: null,
@@ -1106,6 +1162,8 @@ export default function SolarPortfolio() {
     inDur: number
     /** Degrees of FOV punch-in at the cut peak (0 = none). */
     fovDip?: number
+    /** Fade cut — veil to black at the dive's peak, cut, veil up. */
+    fade?: boolean
     commit: () => void
   }) => {
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
@@ -1130,6 +1188,7 @@ export default function SolarPortfolio() {
     mw.outDur = opts.outDur
     mw.inDur = opts.inDur
     mw.fovDip = opts.fovDip ?? 0
+    mw.fade = opts.fade ?? false
     mw.commit = opts.commit
   }
 
@@ -1168,6 +1227,10 @@ export default function SolarPortfolio() {
       destMode: "moon",
       outDur: 1.15,
       inDur: 0.95,
+      // Fade cut: keep the dive (recenter + zoom), veil to black at its
+      // peak, land straight on the settle frame, veil up while the crystal
+      // and holograms materialize. No arrival flight — no spin.
+      fade: true,
       commit: () => {
         setSelectedLandmark(landmark)
         if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex)
@@ -1439,6 +1502,7 @@ export default function SolarPortfolio() {
             // of the fractal toward lavender so the whole rim glow reads cool.
             brightness={config.backgroundVariant === "bright" ? 0.0009 : 0.0014}
             saturation={config.backgroundVariant === "bright" ? 0.55 : 0.85}
+            showcase={bgShowcase}
             tint={
               config.backgroundVariant === "bright"
                 ? [1.05, 1.0, 1.05]
@@ -1463,6 +1527,7 @@ export default function SolarPortfolio() {
             setIsTransitioning={setIsTransitioning}
             riftState={riftState}
             modeWarp={modeWarp}
+            modeFadeRef={modeFadeRef}
             onSwapUniverse={handleSwapUniverse}
             onStageOut={handleStageOut}
             onCinematicComplete={handleCinematicComplete}
@@ -1582,6 +1647,15 @@ export default function SolarPortfolio() {
         config={config}
         start={booted}
         dismiss={mode !== "system" || riftStage !== "idle"}
+      />
+
+      {/* Fade-cut veil (planet→moon) — driven imperatively per frame by
+          CameraController. Above the UI (the HUD swap happens behind it),
+          below the rift warp. */}
+      <div
+        ref={modeFadeRef}
+        className="fixed inset-0 z-[140] pointer-events-none"
+        style={{ background: "#04060c", opacity: 0 }}
       />
 
       {/* Boot cover — opaque over the initial shader-compile stall, fades
