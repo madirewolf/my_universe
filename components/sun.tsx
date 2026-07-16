@@ -284,6 +284,12 @@ export default function Sun({
   useFrame((state) => {
     const wall = state.clock.getElapsedTime()
 
+    // Dual-mount: skip all per-frame work while this sun's universe group
+    // is hidden — uniform writes on an invisible sun are pure waste.
+    for (let g: THREE.Object3D | null = glowRef.current; g; g = g.parent) {
+      if (!g.visible) return
+    }
+
     // Surface boil + corona stay on wall time so the sun never freezes.
     if (sunMatRef.current) sunMatRef.current.uniforms.uTime.value = wall
     if (coronaMatRef.current) coronaMatRef.current.uniforms.uTime.value = wall

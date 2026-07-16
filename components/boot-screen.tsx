@@ -22,7 +22,12 @@ export default function BootScreen({ done }: { done: boolean }) {
     <div
       className="fixed inset-0 z-[200] grid place-items-center"
       style={{
-        background: "radial-gradient(ellipse at 50% 40%, #0a1020 0%, #030509 70%)",
+        // Translucent veil, not an opaque cover: the Star Nest fractal
+        // backdrop compiles fast and blooms in behind the loader while the
+        // heavy planet shaders are still stalling — the forming universe IS
+        // the loading screen.
+        background:
+          "radial-gradient(ellipse at 50% 42%, rgba(6,10,22,0.55) 0%, rgba(3,5,9,0.82) 80%)",
         opacity: done ? 0 : 1,
         transition: "opacity 800ms ease 120ms",
         pointerEvents: done ? "none" : "auto",
@@ -68,7 +73,12 @@ export default function BootScreen({ done }: { done: boolean }) {
           className="font-display text-[12px] font-semibold uppercase select-none"
           style={{ color: "rgba(160,190,255,0.78)", letterSpacing: "0.42em", textIndent: "0.42em" }}
         >
-          Initializing universe<span className="boot-dots" />
+          Initializing universe
+          {/* Dots animate opacity (compositor) — a `content` animation would
+              freeze on the main thread during shader compile. */}
+          <span className="boot-dot" style={{ animationDelay: "0s" }}>.</span>
+          <span className="boot-dot" style={{ animationDelay: "0.35s" }}>.</span>
+          <span className="boot-dot" style={{ animationDelay: "0.7s" }}>.</span>
         </div>
 
         <div
@@ -76,12 +86,15 @@ export default function BootScreen({ done }: { done: boolean }) {
           style={{ width: 180, height: 2, background: "rgba(140,180,255,0.12)" }}
         >
           <div
-            className="absolute inset-y-0 rounded-full"
+            className="absolute inset-y-0 left-0 rounded-full"
             style={{
               width: 60,
               background:
                 "linear-gradient(90deg, transparent, rgba(150,190,255,0.85), transparent)",
+              // transform, not `left`: keeps sweeping on the compositor even
+              // while the main thread is stalled compiling planet shaders.
               animation: "bootScan 1.4s ease-in-out infinite",
+              willChange: "transform",
             }}
           />
         </div>
@@ -93,22 +106,21 @@ export default function BootScreen({ done }: { done: boolean }) {
           to   { transform: rotate(360deg); }
         }
         @keyframes bootCorePulse {
-          0%, 100% { transform: scale(1);    filter: brightness(1); }
-          50%      { transform: scale(1.08); filter: brightness(1.18); }
+          0%, 100% { transform: scale(1); }
+          50%      { transform: scale(1.08); }
         }
         @keyframes bootScan {
-          0%   { left: -60px; }
-          100% { left: 180px; }
+          0%   { transform: translateX(-60px); }
+          100% { transform: translateX(180px); }
         }
-        .boot-dots::after {
-          content: "";
-          animation: bootDots 1.6s steps(1) infinite;
+        .boot-dot {
+          display: inline-block;
+          animation: bootDotFade 1.4s ease-in-out infinite;
+          opacity: 0;
         }
-        @keyframes bootDots {
-          0%   { content: ""; }
-          25%  { content: "."; }
-          50%  { content: ".."; }
-          75%  { content: "..."; }
+        @keyframes bootDotFade {
+          0%, 100% { opacity: 0; }
+          40%, 70% { opacity: 1; }
         }
       `}</style>
     </div>

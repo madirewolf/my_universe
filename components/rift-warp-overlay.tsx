@@ -61,12 +61,14 @@ export interface RiftCinematicState {
 /** Stage timing — single source of truth, shared with CameraController. */
 export const RIFT_TIMING = {
   IN_ROTATE_DURATION: 0.9,
-  IN_ZOOM_DURATION: 1.6,
-  IN_DURATION: 2.5,           // = IN_ROTATE + IN_ZOOM
+  // Longer dolly so the ride INTO the rift gets savored — the cover now
+  // waits until the rift itself engulfs the frame before taking over.
+  IN_ZOOM_DURATION: 2.2,
+  IN_DURATION: 3.1,           // = IN_ROTATE + IN_ZOOM
   PEAK_MIN_DURATION: 0.5,     // floor on peak hold even if shaders are warm
   // Overlay opacity choreography (all CSS-side):
-  COVER_DELAY: 1.85,          // seconds into 'in' before the cover starts fading in
-  COVER_FADE: 0.5,            // fade-in duration — fully opaque at 2.35s < swap at 2.5s
+  COVER_DELAY: 2.6,           // cover starts only once the rift fills the view (~84% of the dive)
+  COVER_FADE: 0.45,           // fade-in duration — fully opaque at 3.05s < swap at 3.1s
   // 'out' choreography:
   STREAK_FADE: 1.05,          // streaks/glow wind down, leaving the flat core color
   OUT_HOLD: 1.15,             // camera pinned inside the new rift core until here

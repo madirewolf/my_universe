@@ -107,7 +107,10 @@ export default function BackgroundMusic({
 
   return (
     <>
-      <audio ref={audioRef} src={src} loop preload="auto" playsInline />
+      {/* preload="none": the 3.8 MB ambient track stays off the critical
+          path — it only starts downloading at the first user gesture that
+          triggers playback anyway. */}
+      <audio ref={audioRef} src={src} loop preload="none" playsInline />
       {!hideToggle && (
         <button
           type="button"

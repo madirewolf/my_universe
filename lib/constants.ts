@@ -202,7 +202,7 @@ const PROFESSIONAL: UniverseConfig = {
       ],
     },
     {
-      type: "ai-controls",
+      type: "perception",
       distance: 17,
       speed: 0.0072,
       size: 1.05,
@@ -271,7 +271,7 @@ const PROFESSIONAL: UniverseConfig = {
       ],
     },
     {
-      type: "ai-controls",
+      type: "applied-ai",
       distance: 21,
       speed: 0.0064,
       size: 1.12,

@@ -154,6 +154,17 @@ export default function Rift({ onClick, universe, paused = false }: RiftProps) {
 
   useFrame((state) => {
     const wall = state.clock.elapsedTime
+
+    // Dual-mount: the inactive universe's rift sits in a visible=false
+    // group — skip its shader/rotation updates entirely. Wall-clock
+    // bookkeeping continues so pause/resume stays smooth on re-entry.
+    for (let g: THREE.Object3D | null = groupRef.current; g; g = g.parent) {
+      if (!g.visible) {
+        prevWall.current = wall
+        return
+      }
+    }
+
     if (prevWall.current !== null && !paused) {
       effectiveTime.current += wall - prevWall.current
     }

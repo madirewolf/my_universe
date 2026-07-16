@@ -153,6 +153,19 @@ interface ModeCutState {
   outDur: number
   inDur: number
   commit: (() => void) | null
+  /** FOV punch-in (degrees) at the cut peak. The object can't get closer
+   *  without near-plane clipping into its spikes, so the *lens* zooms the
+   *  last stretch — the crystal truly fills the frame at the swap. Held
+   *  symmetric across the cut so both scenes render under the same FOV. */
+  fovDip: number
+  baseFov: number
+  /** Arrival arc (phase "in"): swing from the arrival direction to the
+   *  settle direction around the gaze anchor. Radius keeps the cut's
+   *  outward momentum (ease-out) while the angle ramps in-out — kills the
+   *  harsh spin-up right after the cut. */
+  arcAxis: THREE.Vector3
+  arcAngle: number
+  toLen: number
 }
 
 interface CameraFlightState {
@@ -170,6 +183,8 @@ interface CameraFlightState {
 // Scratch vectors — avoid per-frame allocations.
 const _approach = new THREE.Vector3()
 const _dir = new THREE.Vector3()
+const _dir2 = new THREE.Vector3()
+const _arcQ = new THREE.Quaternion()
 const _m4 = new THREE.Matrix4()
 
 function syncCameraLookAt(
@@ -442,9 +457,13 @@ function CameraController({
     if (mw.phase !== "idle") {
       if (mw.start < 0) {
         mw.start = state.clock.elapsedTime
-        if (mw.phase === "out") mw.fromPos.copy(camera.position)
+        if (mw.phase === "out") {
+          mw.fromPos.copy(camera.position)
+          mw.baseFov = (camera as THREE.PerspectiveCamera).fov ?? 60
+        }
       }
       const t = state.clock.elapsedTime - mw.start
+      const pcam = camera as THREE.PerspectiveCamera
 
       if (mw.phase === "out") {
         // Track the live object — planets/moons keep orbiting while we move.
@@ -454,12 +473,20 @@ function CameraController({
         _dir.normalize()
         _approach.copy(mw.targetPos).addScaledVector(_dir, mw.cutDist)
 
-        const k = easeInOutCubic(Math.min(t / mw.outDur, 1))
+        const kt = Math.min(t / mw.outDur, 1)
+        const k = easeInOutCubic(kt)
         camera.position.lerpVectors(mw.fromPos, _approach, k)
         // Recenter from the actual current anchor. In planet mode this is
         // the focused planet, not the origin.
         _lookAt.lerpVectors(mw.fromLookAt, mw.targetPos, Math.min(k * 1.35, 1))
         syncCameraLookAt(camera, controls, _lookAt)
+
+        // Lens punch-in over the last stretch of the dive (see fovDip).
+        if (mw.fovDip > 0 && pcam.isPerspectiveCamera) {
+          const dipK = easeInOutCubic(THREE.MathUtils.clamp((kt - 0.55) / 0.45, 0, 1))
+          pcam.fov = mw.baseFov - mw.fovDip * dipK
+          pcam.updateProjectionMatrix()
+        }
 
         if (t >= mw.outDur) {
           // Swap the scene behind the object (big→small: it fills the
@@ -477,6 +504,12 @@ function CameraController({
       } else if (mw.phase === "cut") {
         camera.position.copy(mw.fromPos)
         syncCameraLookAt(camera, controls, mw.targetPos)
+        // Hold the punched-in lens through the swap — both scenes render
+        // under the same FOV, so the cut itself is invisible.
+        if (mw.fovDip > 0 && pcam.isPerspectiveCamera) {
+          pcam.fov = mw.baseFov - mw.fovDip
+          pcam.updateProjectionMatrix()
+        }
         mw.holdFrames += 1
 
         if (
@@ -501,24 +534,55 @@ function CameraController({
           mw.fromPos.copy(mw.lookAtPos).addScaledVector(_dir, mw.arriveDist)
           camera.position.copy(mw.fromPos)
           syncCameraLookAt(camera, controls, mw.lookAtPos)
+
+          // Precompute the arrival arc: rotate the arrival direction onto
+          // the settle direction around their shared anchor (see arcAxis).
+          _dir2.copy(mw.settlePos).sub(mw.settleLook)
+          mw.toLen = Math.max(_dir2.length(), 1e-4)
+          _dir2.divideScalar(mw.toLen)
+          mw.arcAngle = Math.acos(THREE.MathUtils.clamp(_dir.dot(_dir2), -1, 1))
+          mw.arcAxis.crossVectors(_dir, _dir2)
+          if (mw.arcAxis.lengthSq() < 1e-8) mw.arcAxis.set(0, 1, 0)
+          mw.arcAxis.normalize()
         }
       } else {
-        // Arrival — starts with velocity (continuing the cut's motion) and
-        // brakes into the settle position. The gaze glides from the arrival
-        // anchor onto the resting gaze and finishes EARLY (gaze lead), so
-        // the final frame is exactly the frame the idle controls take over
-        // — no end-of-transition refocus jump.
+        // Arrival — the radius starts with velocity (continuing the cut's
+        // outward motion, ease-out) while the ANGLE to the settle view ramps
+        // in-out around the gaze anchor: an orbit, not a chord, so there is
+        // no harsh spin-kick the instant the cut lands. The gaze glides from
+        // the arrival anchor onto the resting gaze and finishes EARLY (gaze
+        // lead), so the final frame is exactly the frame the idle controls
+        // take over — no end-of-transition refocus jump.
         const rawT = t / mw.inDur
-        const k = easeOutCubic(Math.min(rawT, 1))
+        const radialK = easeOutCubic(Math.min(rawT, 1))
+        const angK = easeInOutCubic(Math.min(rawT, 1))
         const gazeK = easeInOutCubic(Math.min(rawT / 0.85, 1))
-        camera.position.lerpVectors(mw.fromPos, mw.settlePos, k)
+
         _lookAt.lerpVectors(mw.lookAtPos, mw.settleLook, gazeK)
+        _dir.copy(mw.fromPos).sub(mw.lookAtPos)
+        const fromLen = Math.max(_dir.length(), 1e-4)
+        _dir.divideScalar(fromLen)
+        _arcQ.setFromAxisAngle(mw.arcAxis, mw.arcAngle * angK)
+        _dir.applyQuaternion(_arcQ)
+        const len = fromLen + (mw.toLen - fromLen) * radialK
+        camera.position.copy(_lookAt).addScaledVector(_dir, len)
         syncCameraLookAt(camera, controls, _lookAt)
+
+        // Release the lens punch-in over the first stretch of the arrival.
+        if (mw.fovDip > 0 && pcam.isPerspectiveCamera) {
+          const dipK = 1 - easeInOutCubic(THREE.MathUtils.clamp(rawT / 0.45, 0, 1))
+          pcam.fov = mw.baseFov - mw.fovDip * dipK
+          pcam.updateProjectionMatrix()
+        }
 
         if (rawT >= 1) {
           mw.phase = "idle"
           mw.start = -1
           lookTarget.current.copy(mw.settleLook)
+          if (mw.fovDip > 0 && pcam.isPerspectiveCamera) {
+            pcam.fov = mw.baseFov
+            pcam.updateProjectionMatrix()
+          }
         }
       }
       return
@@ -842,6 +906,11 @@ export default function SolarPortfolio() {
     outDur: MODE_CUT.DIVE_OUT,
     inDur: MODE_CUT.DIVE_IN,
     commit: null,
+    fovDip: 0,
+    baseFov: 60,
+    arcAxis: new THREE.Vector3(0, 1, 0),
+    arcAngle: 0,
+    toLen: 1,
   })
   const systemGroupRefs = useRef<Record<Universe, THREE.Group | null>>({
     professional: null,
@@ -1035,6 +1104,8 @@ export default function SolarPortfolio() {
     destMode: Mode
     outDur: number
     inDur: number
+    /** Degrees of FOV punch-in at the cut peak (0 = none). */
+    fovDip?: number
     commit: () => void
   }) => {
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
@@ -1058,6 +1129,7 @@ export default function SolarPortfolio() {
     mw.holdFrames = 0
     mw.outDur = opts.outDur
     mw.inDur = opts.inDur
+    mw.fovDip = opts.fovDip ?? 0
     mw.commit = opts.commit
   }
 
@@ -1119,6 +1191,10 @@ export default function SolarPortfolio() {
       destMode: "moon",
       outDur: 0.55,
       inDur: 0.75,
+      // Lens punch-in at the swap — the crystal can't get geometrically
+      // closer without near-plane clipping its spikes, so the FOV closes
+      // the gap and the crystal truly engulfs the frame mid-cut.
+      fovDip: 16,
       commit: () => {
         setSelectedLandmark(next)
         if (selectedPlanet !== null) replaceQuery(selectedPlanet, nextIndex)
@@ -1167,6 +1243,7 @@ export default function SolarPortfolio() {
       destMode: "planet",
       outDur: MODE_CUT.DIVE_OUT,
       inDur: MODE_CUT.ZOOM_IN,
+      fovDip: 16,
       commit: () => {
         setSelectedLandmark(null)
         if (selectedPlanet !== null) replaceQuery(selectedPlanet, null)
@@ -1372,7 +1449,10 @@ export default function SolarPortfolio() {
           <Nebula variant={config.backgroundVariant} />
           <SpaceAmbience variant={config.backgroundVariant} />
           <CosmicDust variant={config.backgroundVariant} />
-          <Environment preset="night" />
+          {/* Same HDR the "night" preset resolves to, self-hosted: presets
+              fetch from a third-party CDN on every cold load (1.7 MB,
+              off-origin, uncacheable with the site). Identical pixels. */}
+          <Environment files="/hdri/night.hdr" />
           <CameraController
             mode={cameraMode}
             isMobile={isMobile}

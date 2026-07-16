@@ -258,31 +258,26 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
         />
       )
 
-    case "ai-controls":
+    case "perception":
+      // LiDAR mapping planet (Controls & Perception). A scan blade sweeps
+      // around the body; a 3D point cloud lights up as the blade passes and
+      // decays behind it — the world being SLAM-mapped in real time.
+      // Samples object-space position: well-defined on the torus knot.
       return (
         <shaderMaterial
           uniforms={{
             time: { value: 0 },
             uLightDir: { value: new THREE.Vector3(0.4, 0.5, 0.8).normalize() },
-            uAmbient: { value: 0.18 },
-            uSpecPower: { value: 96.0 },
-            uSpecStrength: { value: 0.55 },
-            uHexScaleLarge: { value: 4.0 },
-            uHexScaleSmall: { value: 12.0 },
-            // Palette follows the planet's accent so the two ai-controls
-            // planets (blue Controls vs purple Applied AI) read as siblings,
-            // not clones.
+            uAmbient: { value: 0.2 },
             uAccent: { value: hexToVec3(accentColor || "#4080ff") },
           }}
           vertexShader={
             /* glsl */ `
-            varying vec2 vUv; varying vec3 vN; varying vec3 vPos; varying vec3 vView; varying vec3 vObj;
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
             void main() {
-              vUv = uv;
-              vObj = normal;
+              vLocal = position;
               vN = normalize(normalMatrix * normal);
               vec4 wp = modelMatrix * vec4(position,1.0);
-              vPos = wp.xyz;
               vec4 mv = viewMatrix * wp;
               vView = normalize(-mv.xyz);
               gl_Position = projectionMatrix * mv;
@@ -291,104 +286,172 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
           }
           fragmentShader={
             /* glsl */ `
-            uniform float time, uAmbient, uSpecPower, uSpecStrength;
-            uniform float uHexScaleLarge, uHexScaleSmall;
+            uniform float time, uAmbient;
             uniform vec3 uLightDir, uAccent;
-            varying vec2 vUv; varying vec3 vN, vPos, vView, vObj;
+            varying vec3 vN, vView, vLocal;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
-            float h21(vec2 p) {
-              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-            }
-
-            float hexDist(vec2 p) {
-              p = abs(p);
-              return max(dot(p, normalize(vec2(1.0, 1.7320508))), p.x);
-            }
-
-            // Returns x=edge, y=center dot, z=active fill, w=cellHash
-            vec4 hexLayer(vec2 uv, float scale, float edgeThick) {
-              uv *= scale;
-              vec2 r = vec2(1.0, 1.7320508);
-              vec2 h = r * 0.5;
-              vec2 a = mod(uv, r) - h;
-              vec2 b = mod(uv - h, r) - h;
-              vec2 gv = dot(a, a) < dot(b, b) ? a : b;
-              vec2 id = uv - gv;
-
-              float hd = hexDist(gv);
-              float edge = smoothstep(0.5, 0.5 - edgeThick, hd);
-              float center = smoothstep(0.08, 0.03, length(gv));
-
-              float ch = h21(id);
-              float isActive = step(0.55, ch);
-              float phase = h21(id + 0.73) * 6.28318;
-              float speed = 0.2 + h21(id + 1.1) * 0.35;
-              float activity = isActive * (0.5 + 0.5 * sin(time * speed + phase));
-              float fill = clamp(1.0 - hd * 2.0, 0.0, 1.0) * activity;
-
-              return vec4(edge, center, fill, ch);
-            }
-
-            // Triplanar wrapper — projects onto 3 planes and blends by which axis the normal favours.
-            // No UV seam, hex pattern is anchored to the planet body.
-            vec4 hexTriplanar(vec3 p, float scale, float edgeThick) {
-              vec3 absN = abs(p);
-              vec3 w = pow(absN, vec3(8.0));
-              w /= max(w.x + w.y + w.z, 1e-4);
-              vec4 hX = hexLayer(p.yz, scale, edgeThick);
-              vec4 hY = hexLayer(p.xz, scale, edgeThick);
-              vec4 hZ = hexLayer(p.xy, scale, edgeThick);
-              return hX * w.x + hY * w.y + hZ * w.z;
+            vec3 h33p(vec3 p) {
+              p = vec3(
+                dot(p, vec3(127.1, 311.7, 74.7)),
+                dot(p, vec3(269.5, 183.3, 246.1)),
+                dot(p, vec3(113.5, 271.9, 124.6)));
+              return fract(sin(p) * 43758.5453);
             }
 
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              vec3 sp = normalize(vObj);  // anchored to planet body, no seam
+              vec3 op = vLocal;
 
-              // Dark accent-tinted base with micro surface texture (seam-free)
-              float surf = fbm(sp * 8.0) * 0.035;
-              vec3 col = uAccent * 0.16 + surf;
+              // Scan blade sweeping around the body's Y axis. lag = how long
+              // ago the blade passed this longitude (0 = just now).
+              float lon = atan(op.z, op.x);
+              float lag = fract((time * 0.11) - lon * 0.15915494);
+              float afterglow = exp(-lag * 5.5);
+              float blade = exp(-lag * 90.0);
 
-              // Two-scale hex lattice via triplanar projection
-              vec4 hL = hexTriplanar(sp, uHexScaleLarge, 0.04);
-              vec4 hS = hexTriplanar(sp, uHexScaleSmall, 0.025);
+              // Point cloud — jittered points on a 3D grid, revealed by the
+              // blade and fading behind it like a radar afterimage.
+              vec3 g = op * 7.5;
+              vec3 id = floor(g);
+              vec3 rnd = h33p(id);
+              float has = step(0.3, rnd.x);
+              float d = length(fract(g) - (0.25 + rnd * 0.5));
+              float pt = smoothstep(0.3, 0.1, d) * has;
 
-              // Pulsing active cell fills
-              col += uAccent * 0.12 * hL.z * 0.6;
-              col += uAccent * 0.06 * hS.z * 0.3;
+              // Unmapped world: near-black steel with faint structure
+              float surf = fbm(op * 5.0);
+              vec3 base = uAccent * 0.045 + vec3(0.008, 0.01, 0.016) + surf * 0.025;
+              // The blade itself razors across the surface
+              base += uAccent * 0.5 * blade;
 
-              // Hex grid lines
-              float edges = max(hL.x * 0.75, hS.x * 0.4);
-              col = mix(col, mix(uAccent, vec3(0.85), 0.18) * 0.62, edges);
+              LightOut lo = shade(n, v, l, base, 60.0, 0.18, 0.0, uAmbient);
 
-              // Bright center nodes
-              float nodes = max(hL.y * 0.95, hS.y * 0.55);
-              col = mix(col, mix(uAccent, vec3(1.0), 0.35), nodes);
+              // Mapped points: fresh hits ping white-hot, then cool into the
+              // accent and fade until the next revolution re-paints them.
+              vec3 em = uAccent * pt * afterglow * 1.1;
+              em += mix(uAccent, vec3(0.85, 1.0, 1.0), 0.7) * pt * blade * 2.4;
+              em += uAccent * 0.28 * blade;
 
-              // Scan ring sweeping around the planet's Y axis (anchored, seam-free)
-              float lon = atan(sp.z, sp.x);
-              float scanPhase = fract(lon * 0.15915494 - time * 0.06);
-              float scan = exp(-scanPhase * scanPhase * 4000.0) * 0.3;
-              col += uAccent * scan;
+              // Sensor-housing rim
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 3.5);
+              em += uAccent * fres * 0.9;
 
-              // Fine latitude micro-lines (lat = sp.y, [-1, 1])
-              float latGrid = 0.5 + 0.5 * sin(sp.y * 80.0);
-              col += uAccent * 0.4 * smoothstep(0.97, 1.0, latGrid) * 0.1;
+              gl_FragColor = vec4(lo.color + em, 1.0);
+            }
+          `
+          }
+        />
+      )
 
-              // Lighting
-              LightOut lo = shade(n, v, l, col, uSpecPower, uSpecStrength, 0.0, uAmbient);
+    case "applied-ai":
+      // Neural-network planet (Applied AI & Agentic Systems). Voronoi cells
+      // are neurons: nuclei blink with activation, synapse edges glow, and
+      // expanding activation waves ripple outward from firing neurons while
+      // a slow attention wave washes across the whole network.
+      // Samples object-space position: continuous across the dodecahedron's
+      // flat facets (its normals are not).
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.4, 0.5, 0.8).normalize() },
+            uAmbient: { value: 0.2 },
+            uAccent: { value: hexToVec3(accentColor || "#8b5cff") },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
+            void main() {
+              vLocal = position;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position,1.0);
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient;
+            uniform vec3 uLightDir, uAccent;
+            varying vec3 vN, vView, vLocal;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
 
-              // Emissive glow layers
+            float h31n(vec3 p) {
+              return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+            }
+            vec3 h33n(vec3 p) {
+              p = vec3(
+                dot(p, vec3(127.1, 311.7, 74.7)),
+                dot(p, vec3(269.5, 183.3, 246.1)),
+                dot(p, vec3(113.5, 271.9, 124.6)));
+              return fract(sin(p) * 43758.5453);
+            }
+
+            // 3D voronoi: x = dist to nearest neuron, y = second nearest,
+            // z = nearest neuron's hash.
+            vec3 neuronField(vec3 p) {
+              vec3 id = floor(p);
+              vec3 f = fract(p);
+              float d1 = 9999.0, d2 = 9999.0;
+              float ch = 0.0;
+              for (int z = -1; z <= 1; z++)
+              for (int y = -1; y <= 1; y++)
+              for (int x = -1; x <= 1; x++) {
+                vec3 g = vec3(float(x), float(y), float(z));
+                vec3 rnd = h33n(id + g);
+                vec3 pt = g + 0.22 + rnd * 0.56;
+                float d = length(f - pt);
+                if (d < d1) { d2 = d1; d1 = d; ch = h31n(id + g); }
+                else if (d < d2) { d2 = d; }
+              }
+              return vec3(d1, d2, ch);
+            }
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 op = vLocal;
+
+              vec3 net = neuronField(op * 2.4);
+              float h = net.z;
+
+              // Neuron activation — each cell fires on its own rhythm
+              float act = 0.5 + 0.5 * sin(time * (0.5 + h * 1.6) + h * 6.28318);
+
+              // Soma (nucleus) and synapse edges between cells
+              float soma = 1.0 - smoothstep(0.08, 0.3, net.x);
+              float edge = 1.0 - smoothstep(0.0, 0.07, net.y - net.x);
+              float edgeSoft = 1.0 - smoothstep(0.0, 0.18, net.y - net.x);
+
+              // Expanding activation wave radiating out of each neuron —
+              // the signal firing down its synapses.
+              float ringR = fract(time * (0.14 + h * 0.1) + h * 7.31) * 0.85;
+              float ring = exp(-pow((net.x - ringR) * 14.0, 2.0));
+
+              // Slow attention wave washing across the whole network
+              float wave = 0.5 + 0.5 * sin(dot(op, vec3(0.9, 2.2, 0.55)) - time * 0.45);
+
+              // Deep violet cortex with faint tissue texture
+              vec3 base = uAccent * 0.10 + vec3(0.012, 0.006, 0.02) + fbm(op * 6.0) * 0.03;
+              base = mix(base, uAccent * 0.5, edgeSoft * 0.35);
+              base = mix(base, mix(uAccent, vec3(1.0), 0.45), soma * act);
+
+              LightOut lo = shade(n, v, l, base, 48.0, 0.22, 0.0, uAmbient);
+
+              // Emissive: firing nuclei, glowing synapses, travelling
+              // signals, all breathing with the attention wave.
               vec3 em = vec3(0.0);
-              em += uAccent * 0.8 * edges * 0.45;
-              em += mix(uAccent, vec3(1.0), 0.4) * nodes * 1.3;
-              em += uAccent * 0.3 * (hL.z + hS.z * 0.5) * 0.35;
-              em += uAccent * scan * 0.6;
+              em += mix(uAccent, vec3(1.0), 0.5) * soma * act * 1.2;
+              em += uAccent * edge * (0.35 + 0.45 * wave);
+              em += mix(uAccent, vec3(0.9, 0.8, 1.0), 0.4) * ring * edgeSoft * 1.6;
+              em += uAccent * 0.1 * wave;
 
-              // Fresnel rim — electric accent halo
-              float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+              // Halo — the network's ambient glow
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 3.2);
               em += uAccent * fres * 1.0;
 
               gl_FragColor = vec4(lo.color + em, 1.0);
@@ -397,6 +460,7 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
           }
         />
       )
+
     case "software-systems":
       // PCB planet, triplanar. Everything samples the object-space normal
       // (no vUv) so there is no wrap seam or pole pinch, and the pattern

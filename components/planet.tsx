@@ -287,6 +287,18 @@ export default function Planet({
 
   useFrame((state) => {
     const wall = state.clock.elapsedTime
+
+    // Dual-mount: the inactive universe's planets are inside a visible=false
+    // group. Skip ALL their per-frame work (rotations, uniform writes, moon
+    // anims) — but keep the wall-clock bookkeeping so nothing jumps when the
+    // universe becomes visible again.
+    for (let o: THREE.Object3D | null = orbitRef.current; o; o = o.parent) {
+      if (!o.visible) {
+        prevWall.current = wall
+        return
+      }
+    }
+
     const dt = prevWall.current !== null ? wall - prevWall.current : 0
     if (prevWall.current !== null && !paused) {
       effectiveTime.current += dt
