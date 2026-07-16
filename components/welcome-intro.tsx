@@ -17,7 +17,7 @@ const TITLE_GRADIENTS: Record<Universe, string> = {
 //     --text "Welcome to my universe. Or rather, my solar system." \
 //     --write-media voice-raw.mp3
 //   uvx --from static-ffmpeg static_ffmpeg -y -i voice-raw.mp3 \
-//     -af "highpass=f=130,lowpass=f=7200,chorus=0.6:0.9:45|60:0.28|0.22:0.28|0.35:1.6|1.9,aecho=0.8:0.5:16|32:0.14|0.08,volume=1.15" \
+//     -af "highpass=f=130,lowpass=f=7200,chorus=0.6:0.9:45|60:0.28|0.22:0.28|0.35:1.6|1.9,aecho=0.8:0.5:16|32:0.14|0.08,volume=1.55,alimiter=limit=0.95" \
 //     -b:a 96k public/welcome-voice.mp3
 const VOICE_SRC = "/welcome-voice.mp3"
 
@@ -91,7 +91,7 @@ export default function WelcomeIntro({
 
     const tryPlay = () => {
       if (voiceStartedRef.current) return
-      audio.volume = 0.9
+      audio.volume = 1.0
       audio
         .play()
         .then(() => {
