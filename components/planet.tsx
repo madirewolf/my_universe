@@ -252,7 +252,10 @@ export default function Planet({
 
   // Body radius scales between orbit (size) and detail (4) modes.
   const bodyRadius = isDetailView ? 4 : size
-  const sphereSegments = isDetailView ? 96 : 64
+  // Orbit planets rarely occupy enough pixels to justify 64x64 tessellation.
+  // 48 segments preserves the silhouette while cutting sphere vertices by
+  // roughly 44%; detail bodies retain a denser mesh for close inspection.
+  const sphereSegments = isDetailView ? 72 : 48
 
   const planetGeom = useMemo(
     () => makePlanetGeometry(shape, bodyRadius, sphereSegments, bump, seed),

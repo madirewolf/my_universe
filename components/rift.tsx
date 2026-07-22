@@ -9,6 +9,8 @@ import type { Universe } from "@/lib/constants"
 
 interface RiftProps {
   onClick: () => void
+  /** Begin mounting/warming the destination universe before the swap. */
+  onIntent?: () => void
   universe: Universe
   paused?: boolean
 }
@@ -82,7 +84,7 @@ interface ShardSpec {
   hue: number
 }
 
-export default function Rift({ onClick, universe, paused = false }: RiftProps) {
+export default function Rift({ onClick, onIntent, universe, paused = false }: RiftProps) {
   const groupRef = useRef<Group>(null)
   const coreInnerRef = useRef<Mesh>(null)
   const haloRef = useRef<Mesh>(null)
@@ -226,10 +228,12 @@ export default function Rift({ onClick, universe, paused = false }: RiftProps) {
       <mesh
         onClick={(e) => {
           e.stopPropagation()
+          onIntent?.()
           onClick()
         }}
         onPointerOver={(e) => {
           e.stopPropagation()
+          onIntent?.()
           document.body.style.cursor = "pointer"
           setHovered(true)
         }}

@@ -106,6 +106,10 @@ const MOON_ORBIT_RADIUS = 0.36 // crystal moons orbiting a detail planet
 // body overflow the 60° frame ~1.6× while staying just outside the displaced
 // spike envelope (~1.89), so the near plane never clips into it at the peak.
 const MOON_STEP_CUT_DIST = 2.1
+// The engulf ratio the moon→moon cut uses (cut distance / object radius).
+// Planet→moon and moon→planet reuse it so every crystal cut fills the
+// frame identically — one shared "dive through the object" feel.
+const MOON_ENGULF_FACTOR = MOON_STEP_CUT_DIST / MOON_CRYSTAL_RADIUS
 const CAMERA_FLIGHT = {
   SYSTEM: 1.75,
   SYSTEM_RETURN: 2.25,
@@ -750,7 +754,9 @@ function ShaderWarmer({
   systemGroupRefs: MutableRefObject<Record<Universe, THREE.Group | null>>
 }) {
   const { gl, scene, camera } = useThree()
-  const framesLeft = useRef(4)
+  // Two real offscreen draws are enough to force ANGLE program linking.
+  // Four repeated the most expensive startup work without warming new state.
+  const framesLeft = useRef(2)
   const rt = useRef<THREE.WebGLRenderTarget | null>(null)
 
   useFrame(() => {
@@ -914,14 +920,44 @@ export default function SolarPortfolio() {
   // False until the canvas has rendered real frames; drives the boot screen
   // fade and holds the welcome splash so they never overlap.
   const [booted, setBooted] = useState(false)
+  // Only the active universe participates in the critical boot path. The
+  // destination mounts after the intro, or immediately when the user shows
+  // intent to enter the rift, then ShaderWarmer primes it offscreen.
+  const [secondaryUniverseReady, setSecondaryUniverseReady] = useState(false)
 
   // Safety hatch: if the canvas never reports frames (WebGL blocked, GPU
   // driver trouble, tab kept in the background), don't trap the visitor on
   // the boot screen forever.
   useEffect(() => {
-    const t = setTimeout(() => setBooted(true), 18000)
+    const t = setTimeout(() => setBooted(true), 9000)
     return () => clearTimeout(t)
   }, [])
+
+  useEffect(() => {
+    if (!booted || secondaryUniverseReady) return
+    // Keep inactive shader compilation out of the initial loader and welcome
+    // sequence. After that, ask the browser for an idle slice instead of
+    // creating a predictable mid-animation hitch. Rift intent bypasses this.
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    let idleTask: number | null = null
+    const t = window.setTimeout(() => {
+      if (idleWindow.requestIdleCallback) {
+        idleTask = idleWindow.requestIdleCallback(
+          () => setSecondaryUniverseReady(true),
+          { timeout: 3000 },
+        )
+      } else {
+        setSecondaryUniverseReady(true)
+      }
+    }, 6500)
+    return () => {
+      window.clearTimeout(t)
+      if (idleTask !== null) idleWindow.cancelIdleCallback?.(idleTask)
+    }
+  }, [booted, secondaryUniverseReady])
 
   // Star Nest showcase trigger — armed once the boot veil has fully faded
   // (950ms ≈ BootScreen's fade), so the deterministic 4-second bloom starts
@@ -1218,19 +1254,21 @@ export default function SolarPortfolio() {
     const moonSettle = SETTLE_POS.moon(isMobile)
     // Pan from the focused planet to the clicked moon, then make a small
     // arrival adjustment into the moon scene instead of a big in/out lurch.
+    // Same recipe as the (beloved) moon→moon step: dive INTO the orbiting
+    // moon until it engulfs the frame (FOV punch closes the last gap), cut
+    // to the data crystal filling the frame identically, then the smooth
+    // arc pull-back while the holograms materialize. No veil, no spin.
+    const moonRadius = selected ? focusedCrystalRadius(selected.size) : 0.24
     startModeCut({
       targetObj: object,
-      cutDist: isMobile ? 2.8 : 2.1,
-      arriveDist: moonSettle.length() * 0.92,
+      cutDist: MOON_ENGULF_FACTOR * moonRadius,
+      arriveDist: MOON_STEP_CUT_DIST,
       fromLookAt: focusTargetVector ?? ORIGIN,
       settlePos: moonSettle,
       destMode: "moon",
       outDur: 1.15,
-      inDur: 0.95,
-      // Fade cut: keep the dive (recenter + zoom), veil to black at its
-      // peak, land straight on the settle frame, veil up while the crystal
-      // and holograms materialize. No arrival flight — no spin.
-      fade: true,
+      inDur: 0.75,
+      fovDip: 16,
       commit: () => {
         setSelectedLandmark(landmark)
         if (selectedPlanet !== null && moonIndex >= 0) replaceQuery(selectedPlanet, moonIndex)
@@ -1295,9 +1333,10 @@ export default function SolarPortfolio() {
     const crystalRadius = selected ? focusedCrystalRadius(selected.size) : 0.24
     startModeCut({
       targetObj: null, // dive anchor = the data crystal at the origin
-      cutDist: MODE_CUT.FILL_FACTOR * MOON_CRYSTAL_RADIUS,
-      // The twin moon fills the frame at the matching angular size.
-      arriveDist: moonObj ? MODE_CUT.FILL_FACTOR * crystalRadius : 9.5,
+      cutDist: MOON_STEP_CUT_DIST,
+      // The twin moon fills the frame at the matching angular size — same
+      // engulf depth as the moon→moon step.
+      arriveDist: moonObj ? MOON_ENGULF_FACTOR * crystalRadius : 9.5,
       lookAtPos: moonPos,
       settleLook: planetTarget,
       settlePos: focusTargetVector
@@ -1330,6 +1369,7 @@ export default function SolarPortfolio() {
     // and can't go stale in a closure, so re-entry mid-cinematic (double
     // click, double-fired handler) is impossible.
     if (riftState.current.stage !== "idle" || modeWarp.current.phase !== "idle") return
+    setSecondaryUniverseReady(true)
     const departureLookAt = focusTargetVector
       ? ([focusTargetVector.x, focusTargetVector.y, focusTargetVector.z] as [number, number, number])
       : ([ORIGIN.x, ORIGIN.y, ORIGIN.z] as [number, number, number])
@@ -1490,7 +1530,10 @@ export default function SolarPortfolio() {
       <Canvas
         camera={{ position: [0, 52, 0.6], fov: 60 }}
         frameloop="always"
-        gl={{ antialias: true }}
+        // DPR=2 made the full-screen volumetric shader shade four times as
+        // many pixels. Cap it gently; dense mobile pixels do not need MSAA.
+        dpr={isMobile ? [1, 1.15] : [1, 1.5]}
+        gl={{ antialias: !isMobile, powerPreference: "high-performance", stencil: false }}
       >
         <Suspense fallback={null}>
           <RenderHeartbeat />
@@ -1516,7 +1559,9 @@ export default function SolarPortfolio() {
           {/* Same HDR the "night" preset resolves to, self-hosted: presets
               fetch from a third-party CDN on every cold load (1.7 MB,
               off-origin, uncacheable with the site). Identical pixels. */}
-          <Environment files="/hdri/night.hdr" />
+          <Suspense fallback={null}>
+            <Environment files="/hdri/night.hdr" />
+          </Suspense>
           <CameraController
             mode={cameraMode}
             isMobile={isMobile}
@@ -1536,10 +1581,12 @@ export default function SolarPortfolio() {
 
           <ambientLight intensity={LIGHTING.ambient} />
 
-          {/* Dual-mount — both universes stay mounted from app start. The
-              active universe remains visible through system and planet modes,
-              so planet focus happens in the same solar-system scene. */}
-          {(["professional", "personal"] as Universe[]).map((u) => {
+          {/* The active universe mounts immediately; its mirror is deferred
+              until post-intro idle time or rift intent. Once mounted, both
+              remain resident so later swaps stay seamless. */}
+          {(["professional", "personal"] as Universe[]).filter(
+            (u) => u === universe || secondaryUniverseReady,
+          ).map((u) => {
             const cfg = UNIVERSE_CONFIG[u]
             const isActive = u === universe
             return (
@@ -1568,7 +1615,12 @@ export default function SolarPortfolio() {
                   onLandmarkClick={handleLandmarkClick}
                   onPlanetHover={setHoveredPlanet}
                 />
-                <Rift onClick={handleEnterRift} universe={u} paused={paused || !isActive} />
+                <Rift
+                  onClick={handleEnterRift}
+                  onIntent={() => setSecondaryUniverseReady(true)}
+                  universe={u}
+                  paused={paused || !isActive}
+                />
               </group>
             )
           })}

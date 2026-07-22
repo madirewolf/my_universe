@@ -76,7 +76,9 @@ float n2(vec2 p) {
 float fbm2(vec2 p) {
   float a = 0.0;
   float amp = 0.5;
-  for (int i = 0; i < 6; i++) {
+  // Five octaves are visually indistinguishable at this cloud scale and trim
+  // the heaviest repeated work across nine large transparent planes.
+  for (int i = 0; i < 5; i++) {
     a += amp * n2(p);
     p *= 2.1;
     amp *= 0.55;

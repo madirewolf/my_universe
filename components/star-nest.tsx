@@ -48,9 +48,12 @@ const FRAG = /* glsl */ `
   uniform vec3  uTint;
   varying vec2 vUv;
 
-  #define iterations 14
+  // This is a full-screen shader, so every loop is multiplied by every pixel.
+  // 11x11 keeps the same nested galactic structure at substantially lower GPU
+  // cost than the original 14x14 march, especially on high-DPI displays.
+  #define iterations 11
   #define formuparam 0.53
-  #define volsteps 14
+  #define volsteps 11
   #define stepsize 0.1
   #define zoom   0.800
   #define tile   0.850

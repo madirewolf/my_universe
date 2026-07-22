@@ -912,9 +912,10 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
       )
 
     case "media":
-      // Inherited frequencies: parallel waveform traces circle the body at
-      // different phases, borrowing color from one another as they overlap.
-      // The surface stays nearly black so the signal history reads first.
+      // A UV-free signal organism built for the Media planet's torus-knot
+      // topology. Every pattern is sampled in object-space 3D, so it crosses
+      // the geometry without seams. The vertex stage also physically deforms
+      // the knot: this is a living waveform, not a texture wrapped on a ball.
       return (
         <shaderMaterial
           uniforms={{
@@ -925,11 +926,23 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
           }}
           vertexShader={
             /* glsl */ `
-            varying vec3 vN; varying vec3 vView; varying vec3 vObj;
+            uniform float time;
+            varying vec3 vN; varying vec3 vView; varying vec3 vLocal;
+
             void main() {
-              vObj = normal;
+              // Three inherited carriers share the same body but arrive with
+              // different phase, direction, and frequency. Their interference
+              // actually pushes the mesh outward along its normal.
+              float ancestor = sin(dot(position, vec3(5.2, 7.1, 3.7)) + time * 0.72);
+              float descendant = sin(dot(position, vec3(-8.3, 4.4, 6.6)) - time * 0.94 + 1.7);
+              float ghost = sin(dot(position, vec3(11.0, -5.6, 8.8)) + time * 0.43 + 3.1);
+              float beat = pow(0.5 + 0.5 * sin(length(position) * 18.0 - time * 1.8), 7.0);
+              float displacement = ancestor * 0.042 + descendant * 0.024 + ghost * 0.012 + beat * 0.038;
+              vec3 displaced = position + normal * displacement;
+
+              vLocal = displaced;
               vN = normalize(normalMatrix * normal);
-              vec4 wp = modelMatrix * vec4(position, 1.0);
+              vec4 wp = modelMatrix * vec4(displaced, 1.0);
               vec4 mv = viewMatrix * wp;
               vView = normalize(-mv.xyz);
               gl_Position = projectionMatrix * mv;
@@ -940,57 +953,49 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
             /* glsl */ `
             uniform float time, uAmbient;
             uniform vec3 uLightDir, uBaseColor;
-            varying vec3 vN, vView, vObj;
+            varying vec3 vN, vView, vLocal;
             ${NOISE_GLSL}
             ${LIGHTING_GLSL}
 
-            float signalLine(float latitude, float wave, float repeats, float width) {
-              float lane = abs(fract((latitude - wave) * repeats + 0.5) - 0.5);
-              return 1.0 - smoothstep(width, width * 2.4, lane);
+            float carrier(vec3 p, vec3 axis, float frequency, float phase, float width) {
+              float wave = abs(sin(dot(p, normalize(axis)) * frequency + phase));
+              return 1.0 - smoothstep(width, width + 0.12, wave);
             }
 
             void main() {
               vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
-              vec3 sp = normalize(vObj);
-              float lon = atan(sp.z, sp.x);
-              float lat = asin(clamp(sp.y, -1.0, 1.0));
+              vec3 p = vLocal;
 
-              // Three related carriers. Each is recognizable as the same
-              // musical idea, shifted and transformed by a later generation.
-              float parent = sin(lon * 3.0 + time * 0.24) * 0.11
-                           + sin(lon * 8.0 - time * 0.11) * 0.035;
-              float child = sin(lon * 3.0 + time * 0.24 + 0.72) * 0.11
-                          + sin(lon * 11.0 + time * 0.16) * 0.028;
-              float echo = sin(lon * 3.0 + time * 0.24 + 1.44) * 0.11
-                         + sin(lon * 15.0 - time * 0.09) * 0.022;
+              // No UVs, latitude, or normal mapping: continuous 3D fields
+              // make the traces genuinely seamless around every knot turn.
+              float parentTrace = carrier(p, vec3(1.0, 0.42, -0.28), 13.0, time * 0.58, 0.055);
+              float childTrace = carrier(p, vec3(-0.35, 1.0, 0.52), 17.0, -time * 0.76 + 1.4, 0.045);
+              float echoTrace = carrier(p, vec3(0.48, -0.31, 1.0), 23.0, time * 0.41 + 2.8, 0.04);
 
-              float parentTrace = signalLine(lat, parent, 2.1, 0.022);
-              float childTrace = signalLine(lat, child, 2.1, 0.019);
-              float echoTrace = signalLine(lat, echo, 2.1, 0.016);
-
-              float memory = fbm(sp * 5.5 + vec3(time * 0.012, 0.0, 0.0));
-              vec3 deep = vec3(0.004, 0.012, 0.014) + uBaseColor * memory * 0.035;
+              float memory = fbm(p * 2.8 + vec3(time * 0.025, -time * 0.014, time * 0.018));
+              float archive = fbm(p * 6.2 - vec3(time * 0.012, 0.0, time * 0.01));
+              vec3 deep = vec3(0.0015, 0.007, 0.009) + uBaseColor * memory * 0.045;
               vec3 cyan = vec3(0.0, 0.94, 1.0);
               vec3 magenta = vec3(1.0, 0.05, 0.72);
               vec3 base = deep;
-              base += uBaseColor * parentTrace * 0.86;
-              base += cyan * childTrace * 0.72;
-              base += magenta * echoTrace * 0.58;
+              base += uBaseColor * parentTrace * (0.72 + memory * 0.45);
+              base += cyan * childTrace * (0.58 + archive * 0.38);
+              base += magenta * echoTrace * 0.52;
 
-              // Overlaps brighten like shared source material surfacing in
-              // several tracks at once. Fine ticks suggest a spectral display.
-              float overlap = parentTrace * childTrace + childTrace * echoTrace;
-              base += vec3(1.0) * overlap * 0.42;
-              float ticks = pow(max(0.0, sin(lon * 52.0)), 18.0)
-                          * smoothstep(0.55, 0.9, memory);
-              base += cyan * ticks * 0.12;
+              // Shared source material becomes white-hot only where lineages
+              // intersect. A spherical sonar pulse reveals buried layers.
+              float overlap = parentTrace * childTrace + childTrace * echoTrace + echoTrace * parentTrace;
+              float node = smoothstep(0.16, 0.72, overlap);
+              float sonar = 1.0 - smoothstep(0.035, 0.14, abs(sin(length(p) * 20.0 - time * 1.65)));
+              base += vec3(1.0, 0.96, 0.84) * node * 0.82;
+              base += mix(cyan, uBaseColor, memory) * sonar * smoothstep(0.48, 0.88, archive) * 0.32;
 
-              LightOut lo = shade(n, v, l, base, 72.0, 0.22, 0.0, uAmbient);
-              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.1);
-              float pulse = 0.72 + 0.28 * sin(time * 1.35 - lon * 2.0);
-              vec3 rim = mix(cyan, magenta, 0.5 + 0.5 * sin(lon * 2.0)) * fres * pulse;
+              LightOut lo = shade(n, v, l, base, 84.0, 0.28, 0.0, uAmbient);
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.0);
+              float phase = 0.5 + 0.5 * sin(dot(p, vec3(2.1, 3.4, -2.7)) + time * 1.25);
+              vec3 rim = mix(cyan, magenta, phase) * fres * (0.62 + sonar * 0.7);
 
-              gl_FragColor = vec4(lo.color + rim * 0.78, 1.0);
+              gl_FragColor = vec4(lo.color + rim * 0.92 + node * uBaseColor * 0.34, 1.0);
             }
           `
           }
