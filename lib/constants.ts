@@ -552,6 +552,70 @@ const PROFESSIONAL: UniverseConfig = {
         },
       ],
     },
+    {
+      type: "media",
+      distance: 40,
+      speed: 0.0032,
+      size: 1.18,
+      phase: 4.72,
+      tilt: 0.14,
+      bump: 0.025,
+      shape: "sphere",
+      name: "Media",
+      description: "Creative technology for sound, culture, and interactive storytelling",
+      color: "#b6ff00",
+      tags: ["Creative Coding", "Music Data", "Spotify", "Interactive Media"],
+      landmarks: [
+        {
+          name: "ECHONOMY",
+          category: "Music Archaeology / Interactive Web",
+          description:
+            "An interactive music archaeology tool I built to trace the samples, interpolations, and self-references hiding inside a Spotify library. Each track becomes a case file with playable source material, precise relationship labels, and multiple roots when the data supports them. The same scan can compile a new private playlist made only from the original sampled songs. I built the interface, Spotify PKCE flow, Genius lookup pipeline, Apple preview matching, Netlify Functions backend, and public deployment.",
+          technologies: [
+            "JavaScript",
+            "Node.js",
+            "Express",
+            "Spotify Web API",
+            "Genius API",
+            "Apple previews",
+            "PKCE OAuth",
+            "Netlify Functions",
+            "Music data visualization",
+          ],
+          color: "#b6ff00",
+          images: [
+            "/professional/echonomy-landing.jpg",
+            "/professional/echonomy-lineage.jpg",
+          ],
+          notes: [
+            {
+              label: "Inheritance",
+              kicker: "music reinvents itself",
+              body:
+                "Songs rarely begin at zero. They inherit a drum break, a melody, a voice, or a feeling that has already lived somewhere else. ECHONOMY makes that shared memory visible, then lets you listen backward through it.",
+            },
+          ],
+          links: [
+            {
+              label: "Enter ECHONOMY",
+              url: "https://echonomy.limiliminal.com",
+            },
+          ],
+          sectionLabels: {
+            story: "Case File",
+            tech: "System",
+            link: "Enter",
+            images: "Signals",
+          },
+          sectionKickers: {
+            story: "what it does",
+            tech: "how it runs",
+            link: "open the archive",
+            images: "live captures",
+          },
+        },
+      ],
+    },
   ],
 }
 

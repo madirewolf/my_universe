@@ -911,6 +911,92 @@ export function getPlanetMaterial(type: string, accentColor?: string) {
         />
       )
 
+    case "media":
+      // Inherited frequencies: parallel waveform traces circle the body at
+      // different phases, borrowing color from one another as they overlap.
+      // The surface stays nearly black so the signal history reads first.
+      return (
+        <shaderMaterial
+          uniforms={{
+            time: { value: 0 },
+            uLightDir: { value: new THREE.Vector3(0.35, 0.55, 0.85).normalize() },
+            uAmbient: { value: 0.3 },
+            uBaseColor: { value: hexToVec3(accentColor || "#b6ff00") },
+          }}
+          vertexShader={
+            /* glsl */ `
+            varying vec3 vN; varying vec3 vView; varying vec3 vObj;
+            void main() {
+              vObj = normal;
+              vN = normalize(normalMatrix * normal);
+              vec4 wp = modelMatrix * vec4(position, 1.0);
+              vec4 mv = viewMatrix * wp;
+              vView = normalize(-mv.xyz);
+              gl_Position = projectionMatrix * mv;
+            }
+          `
+          }
+          fragmentShader={
+            /* glsl */ `
+            uniform float time, uAmbient;
+            uniform vec3 uLightDir, uBaseColor;
+            varying vec3 vN, vView, vObj;
+            ${NOISE_GLSL}
+            ${LIGHTING_GLSL}
+
+            float signalLine(float latitude, float wave, float repeats, float width) {
+              float lane = abs(fract((latitude - wave) * repeats + 0.5) - 0.5);
+              return 1.0 - smoothstep(width, width * 2.4, lane);
+            }
+
+            void main() {
+              vec3 n = normalize(vN), l = normalize(uLightDir), v = normalize(vView);
+              vec3 sp = normalize(vObj);
+              float lon = atan(sp.z, sp.x);
+              float lat = asin(clamp(sp.y, -1.0, 1.0));
+
+              // Three related carriers. Each is recognizable as the same
+              // musical idea, shifted and transformed by a later generation.
+              float parent = sin(lon * 3.0 + time * 0.24) * 0.11
+                           + sin(lon * 8.0 - time * 0.11) * 0.035;
+              float child = sin(lon * 3.0 + time * 0.24 + 0.72) * 0.11
+                          + sin(lon * 11.0 + time * 0.16) * 0.028;
+              float echo = sin(lon * 3.0 + time * 0.24 + 1.44) * 0.11
+                         + sin(lon * 15.0 - time * 0.09) * 0.022;
+
+              float parentTrace = signalLine(lat, parent, 2.1, 0.022);
+              float childTrace = signalLine(lat, child, 2.1, 0.019);
+              float echoTrace = signalLine(lat, echo, 2.1, 0.016);
+
+              float memory = fbm(sp * 5.5 + vec3(time * 0.012, 0.0, 0.0));
+              vec3 deep = vec3(0.004, 0.012, 0.014) + uBaseColor * memory * 0.035;
+              vec3 cyan = vec3(0.0, 0.94, 1.0);
+              vec3 magenta = vec3(1.0, 0.05, 0.72);
+              vec3 base = deep;
+              base += uBaseColor * parentTrace * 0.86;
+              base += cyan * childTrace * 0.72;
+              base += magenta * echoTrace * 0.58;
+
+              // Overlaps brighten like shared source material surfacing in
+              // several tracks at once. Fine ticks suggest a spectral display.
+              float overlap = parentTrace * childTrace + childTrace * echoTrace;
+              base += vec3(1.0) * overlap * 0.42;
+              float ticks = pow(max(0.0, sin(lon * 52.0)), 18.0)
+                          * smoothstep(0.55, 0.9, memory);
+              base += cyan * ticks * 0.12;
+
+              LightOut lo = shade(n, v, l, base, 72.0, 0.22, 0.0, uAmbient);
+              float fres = pow(1.0 - max(dot(n, v), 0.0), 2.1);
+              float pulse = 0.72 + 0.28 * sin(time * 1.35 - lon * 2.0);
+              vec3 rim = mix(cyan, magenta, 0.5 + 0.5 * sin(lon * 2.0)) * fres * pulse;
+
+              gl_FragColor = vec4(lo.color + rim * 0.78, 1.0);
+            }
+          `
+          }
+        />
+      )
+
     case "film":
       // Silver-screen planet: slowly morphing monochrome imagery washed in
       // warm projector light, with grain, flicker, scratches, a drifting

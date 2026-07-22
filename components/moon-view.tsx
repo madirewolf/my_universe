@@ -68,6 +68,7 @@ function moonGlassBackground(color?: string, active = false): string {
 }
 
 const EXACT_CONCEPTS: Record<string, MoonConcept> = {
+  "echonomy": "signalScope",
   "why i named her nyx": "translator",
   "gallery": "craterMuseum",
   "letterboxd · @madirewolf": "skyArchive",
