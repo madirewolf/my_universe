@@ -30,3 +30,13 @@ next-env.d.ts
 
 # Claude Code local tooling
 .claude/
+
+# personal working documents - NEVER commit.
+# Raw voice/intake notes, content-review index, resume drafts, agent notes.
+# Kept on disk as the canonical source for site copy; not for publication.
+VOICE.md
+VOICE_INTAKE_*.md
+CONTENT_REVIEW.md
+RESUME_ADDITIONS_DRAFT.md
+CLAUDE.md
+AGENTS.md
